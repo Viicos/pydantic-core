@@ -49,9 +49,9 @@ impl Validator for IntValidator {
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
-        let either_int = input.validate_int(state.strict_or(self.strict))?;
-        state.set_exactness_unknown();
-        Ok(either_int.into_py(py))
+        input
+            .validate_int(state.strict_or(self.strict))
+            .map(|val_match| val_match.unpack(state).into_py(py))
     }
 
     fn different_strict_behavior(
@@ -90,7 +90,7 @@ impl Validator for ConstrainedIntValidator {
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
-        let either_int = input.validate_int(state.strict_or(self.strict))?;
+        let either_int = input.validate_int(state.strict_or(self.strict))?.unpack(state);
         let int_value = either_int.as_int()?;
 
         if let Some(ref multiple_of) = self.multiple_of {
@@ -148,7 +148,6 @@ impl Validator for ConstrainedIntValidator {
                 ));
             }
         }
-        state.set_exactness_unknown();
         Ok(either_int.into_py(py))
     }
 

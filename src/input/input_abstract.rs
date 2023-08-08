@@ -3,11 +3,11 @@ use std::fmt;
 use pyo3::types::{PyDict, PyType};
 use pyo3::{intern, prelude::*};
 
-use crate::errors::{InputValue, LocItem, ValResult};
+use crate::errors::{ErrorTypeDefaults, InputValue, LocItem, ValError, ValResult};
 use crate::{PyMultiHostUrl, PyUrl};
 
 use super::datetime::{EitherDate, EitherDateTime, EitherTime, EitherTimedelta};
-use super::return_enums::{EitherBytes, EitherInt, EitherString};
+use super::return_enums::{EitherBytes, EitherInt, EitherString, ValidationMatch};
 use super::{EitherFloat, GenericArguments, GenericIterable, GenericIterator, GenericMapping, JsonInput};
 
 #[derive(Debug, Clone, Copy)]
@@ -29,7 +29,7 @@ impl IntoPy<PyObject> for InputType {
 /// the convention is to either implement:
 /// * `strict_*` & `lax_*` if they have different behavior
 /// * or, `validate_*` and `strict_*` to just call `validate_*` if the behavior for strict and lax is the same
-pub trait Input<'a>: fmt::Debug + ToPyObject {
+pub trait Input<'a>: fmt::Debug + ToPyObject + Sized {
     fn as_loc_item(&self) -> LocItem;
 
     fn as_error_value(&'a self) -> InputValue<'a>;
@@ -98,36 +98,16 @@ pub trait Input<'a>: fmt::Debug + ToPyObject {
         self.strict_bytes()
     }
 
-    fn validate_bool(&self, strict: bool) -> ValResult<bool> {
-        if strict {
-            self.strict_bool()
-        } else {
-            self.lax_bool()
-        }
-    }
-    fn strict_bool(&self) -> ValResult<bool>;
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn lax_bool(&self) -> ValResult<bool> {
-        self.strict_bool()
-    }
+    fn validate_bool(&self, strict: bool) -> ValResult<'_, ValidationMatch<bool>>;
 
-    fn validate_int(&'a self, strict: bool) -> ValResult<EitherInt<'a>> {
-        if strict {
-            self.strict_int()
-        } else {
-            self.lax_int()
-        }
-    }
-    fn strict_int(&'a self) -> ValResult<EitherInt<'a>>;
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn lax_int(&'a self) -> ValResult<EitherInt<'a>> {
-        self.strict_int()
-    }
+    fn validate_int(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherInt<'a>>>;
 
-    /// Extract an EitherInt from the input, only allowing exact
-    /// matches for an Int (no subclasses)
     fn exact_int(&'a self) -> ValResult<EitherInt<'a>> {
-        self.strict_int()
+        self.validate_int(true).and_then(|val_match| {
+            val_match
+                .require_exact()
+                .ok_or_else(|| ValError::new(ErrorTypeDefaults::IntType, self))
+        })
     }
 
     /// Extract a String from the input, only allowing exact
@@ -136,21 +116,7 @@ pub trait Input<'a>: fmt::Debug + ToPyObject {
         self.strict_str()
     }
 
-    fn validate_float(&'a self, strict: bool, ultra_strict: bool) -> ValResult<EitherFloat<'a>> {
-        if ultra_strict {
-            self.ultra_strict_float()
-        } else if strict {
-            self.strict_float()
-        } else {
-            self.lax_float()
-        }
-    }
-    fn ultra_strict_float(&'a self) -> ValResult<EitherFloat<'a>>;
-    fn strict_float(&'a self) -> ValResult<EitherFloat<'a>>;
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn lax_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        self.strict_float()
-    }
+    fn validate_float(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherFloat<'a>>>;
 
     fn validate_decimal(&'a self, strict: bool, decimal_type: &'a PyType) -> ValResult<&'a PyAny> {
         if strict {

@@ -16,25 +16,14 @@ use crate::tools::SchemaDict;
 
 use super::custom_error::CustomError;
 use super::literal::LiteralLookup;
-use super::{build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, ValidationState, Validator};
+use super::{
+    build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Exactness, ValidationState, Validator,
+};
 
 #[derive(Debug, Clone, Copy)]
 enum UnionMode {
-    Smart {
-        strict_required: bool,
-        ultra_strict_required: bool,
-    },
+    Smart,
     LeftToRight,
-}
-
-impl UnionMode {
-    // construct smart with some default values
-    const fn default_smart() -> Self {
-        Self::Smart {
-            strict_required: true,
-            ultra_strict_required: false,
-        }
-    }
 }
 
 impl FromStr for UnionMode {
@@ -42,7 +31,7 @@ impl FromStr for UnionMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "smart" => Ok(Self::default_smart()),
+            "smart" => Ok(Self::Smart),
             "left_to_right" => Ok(Self::LeftToRight),
             s => py_schema_err!("Invalid union mode: `{}`, expected `smart` or `left_to_right`", s),
         }
@@ -87,7 +76,7 @@ impl BuildValidator for UnionValidator {
         let auto_collapse = || schema.get_as_req(intern!(py, "auto_collapse")).unwrap_or(true);
         let mode = schema
             .get_as::<&str>(intern!(py, "mode"))?
-            .map_or(Ok(UnionMode::default_smart()), UnionMode::from_str)?;
+            .map_or(Ok(UnionMode::Smart), UnionMode::from_str)?;
         match choices.len() {
             0 => py_schema_err!("One or more union choices required"),
             1 if auto_collapse() => Ok(choices.into_iter().next().unwrap().0),
@@ -112,71 +101,162 @@ impl BuildValidator for UnionValidator {
 }
 
 impl UnionValidator {
-    fn validate_smart<'s, 'data>(
-        &'s self,
+    fn validate_smart<'data>(
+        &self,
         py: Python<'data>,
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
-        strict_required: bool,
-        ultra_strict_required: bool,
     ) -> ValResult<'data, PyObject> {
-        if ultra_strict_required {
-            // do an ultra strict check first
-            let state = &mut state.rebind_extra(|extra| {
-                extra.strict = Some(true);
-                extra.ultra_strict = true;
-            });
-            if let Some(res) = self
-                .choices
-                .iter()
-                .map(|(validator, _label)| validator.validate(py, input, state))
-                .find(ValResult::is_ok)
-            {
-                return res;
-            }
-        }
-
+        let strict = state.strict_or(self.strict);
         let mut errors = MaybeErrors::new(self.custom_error.as_ref());
 
-        if state.strict_or(self.strict) {
-            let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
-            for (validator, label) in &self.choices {
-                match validator.validate(py, input, state) {
-                    Err(ValError::LineErrors(lines)) => errors.push(validator, label.as_deref(), lines),
-                    otherwise => return otherwise,
-                };
-            }
+        let mut strict_success = None;
+        let mut lax_success = None;
 
-            Err(errors.into_val_error(input))
-        } else {
-            if strict_required {
-                // 1st pass: check if the value is an exact instance of one of the Union types,
-                // e.g. use validate in strict mode
-                let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
-                if let Some(res) = self
-                    .choices
-                    .iter()
-                    .map(|(validator, _label)| validator.validate(py, input, state))
-                    .find(ValResult::is_ok)
-                {
-                    return res;
+        if strict {
+            // one-pass strict validation
+            let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
+            for (choice, label) in &self.choices {
+                state.exactness = Some(Exactness::Exact);
+                match choice.validate(py, input, state) {
+                    Ok(success) => {
+                        if state.exactness == Some(Exactness::Exact) {
+                            // exact match, return
+                            return Ok(success);
+                        } else if strict_success.is_none() {
+                            // remember first success for later as a fallback
+                            // we know this must have been strict, because we ran strict validation
+                            strict_success = Some(success);
+                        }
+                    }
+                    Err(ValError::LineErrors(lines)) => {
+                        // if we don't yet know this validation will succeed, record the error
+                        if strict_success.is_none() {
+                            errors.push(choice, label.as_deref(), lines);
+                        }
+                    }
+                    otherwise => return otherwise,
                 }
             }
+        } else {
+            // one-pass lax validation; for validators which have unknown exactness need to
+            // revalidate in strict mode
+            for (choice, label) in &self.choices {
+                state.exactness = Some(Exactness::Exact);
+                match choice.validate(py, input, state) {
+                    Ok(success) => match state.exactness {
+                        // exact match, return
+                        Some(Exactness::Exact) => return Ok(success),
+                        Some(Exactness::Strict) => {
+                            if strict_success.is_none() {
+                                strict_success = Some(success);
+                            }
+                        }
+                        Some(Exactness::Lax) => {
+                            if lax_success.is_none() {
+                                lax_success = Some(success);
+                            }
+                        }
+                        None => {
+                            // unknown match during lax validation, try requiring a strict
+                            // validation, but only if we haven't already had a strict match
+                            if strict_success.is_none() {
+                                state.exactness = Some(Exactness::Exact);
+                                let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
+                                let res_strict = choice.validate(py, input, state);
 
-            // 2nd pass: check if the value can be coerced into one of the Union types, e.g. use validate
-            for (validator, label) in &self.choices {
-                match validator.validate(py, input, state) {
-                    Err(ValError::LineErrors(lines)) => errors.push(validator, label.as_deref(), lines),
+                                if let Ok(success_strict) = res_strict {
+                                    // strict validation should never succeed with "lax" result
+                                    debug_assert_ne!(state.exactness, Some(Exactness::Lax));
+                                    strict_success = Some(success_strict);
+                                }
+                            }
+
+                            // record this as a lax match irrespective of the above
+                            if lax_success.is_none() {
+                                lax_success = Some(success);
+                            }
+                        }
+                    },
+                    Err(ValError::LineErrors(lines)) => {
+                        // if we don't yet know this validation will succeed, record the error
+                        if strict_success.is_none() && lax_success.is_none() {
+                            errors.push(choice, label.as_deref(), lines);
+                        }
+                    }
                     otherwise => return otherwise,
-                };
+                }
             }
-
-            Err(errors.into_val_error(input))
         }
+
+        if let Some(success) = strict_success {
+            return Ok(success);
+        }
+
+        if let Some(success) = lax_success {
+            return Ok(success);
+        }
+
+        // no matches, build errors
+        Err(errors.into_val_error(input))
+
+        // if ultra_strict_required {
+        //     // do an ultra strict check first
+        //     let state = &mut state.rebind_extra(|extra| {
+        //         extra.strict = Some(true);
+        //         extra.ultra_strict = true;
+        //     });
+        //     if let Some(res) = self
+        //         .choices
+        //         .iter()
+        //         .map(|(validator, _label)| validator.validate(py, input, state))
+        //         .find(ValResult::is_ok)
+        //     {
+        //         return res;
+        //     }
+        // }
+
+        // let mut errors = MaybeErrors::new(self.custom_error.as_ref());
+
+        // if state.strict_or(self.strict) {
+        //     let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
+        //     for (validator, label) in &self.choices {
+        //         match validator.validate(py, input, state) {
+        //             Err(ValError::LineErrors(lines)) => errors.push(validator, label.as_deref(), lines),
+        //             otherwise => return otherwise,
+        //         };
+        //     }
+
+        //     Err(errors.into_val_error(input))
+        // } else {
+        //     if strict_required {
+        //         // 1st pass: check if the value is an exact instance of one of the Union types,
+        //         // e.g. use validate in strict mode
+        //         let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
+        //         if let Some(res) = self
+        //             .choices
+        //             .iter()
+        //             .map(|(validator, _label)| validator.validate(py, input, state))
+        //             .find(ValResult::is_ok)
+        //         {
+        //             return res;
+        //         }
+        //     }
+
+        //     // 2nd pass: check if the value can be coerced into one of the Union types, e.g. use validate
+        //     for (validator, label) in &self.choices {
+        //         match validator.validate(py, input, state) {
+        //             Err(ValError::LineErrors(lines)) => errors.push(validator, label.as_deref(), lines),
+        //             otherwise => return otherwise,
+        //         };
+        //     }
+
+        //     Err(errors.into_val_error(input))
+        // }
     }
 
-    fn validate_left_to_right<'s, 'data>(
-        &'s self,
+    fn validate_left_to_right<'data>(
+        &self,
         py: Python<'data>,
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
@@ -217,10 +297,7 @@ impl Validator for UnionValidator {
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
         match self.mode {
-            UnionMode::Smart {
-                strict_required,
-                ultra_strict_required,
-            } => self.validate_smart(py, input, state, strict_required, ultra_strict_required),
+            UnionMode::Smart => self.validate_smart(py, input, state),
             UnionMode::LeftToRight => self.validate_left_to_right(py, input, state),
         }
     }
@@ -241,21 +318,6 @@ impl Validator for UnionValidator {
 
     fn complete(&mut self, definitions: &DefinitionsBuilder<CombinedValidator>) -> PyResult<()> {
         self.choices.iter_mut().try_for_each(|(v, _)| v.complete(definitions))?;
-        if let UnionMode::Smart {
-            ref mut strict_required,
-            ref mut ultra_strict_required,
-        } = self.mode
-        {
-            *strict_required = self
-                .choices
-                .iter()
-                .any(|(v, _)| v.different_strict_behavior(Some(definitions), false));
-            *ultra_strict_required = self
-                .choices
-                .iter()
-                .any(|(v, _)| v.different_strict_behavior(Some(definitions), true));
-        }
-
         Ok(())
     }
 }

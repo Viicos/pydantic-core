@@ -33,7 +33,8 @@ impl Validator for AnyValidator {
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
-        state.merge_exactness(Exactness::Lax);
+        // in a union, Any should be preferred to doing lax coercions
+        state.merge_exactness(Exactness::Strict);
         Ok(input.to_object(py))
     }
 

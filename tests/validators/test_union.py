@@ -339,9 +339,6 @@ def test_dirty_behaviour():
 
 def test_int_float():
     v = SchemaValidator(core_schema.union_schema([core_schema.int_schema(), core_schema.float_schema()]))
-    assert 'strict_required:true' in plain_repr(v)
-    assert 'ultra_strict_required:true' in plain_repr(v)  # since "float" schema has ultra-strict behaviour
-
     assert v.validate_python(1) == IsInt(approx=1, delta=0)
     assert v.validate_json('1') == IsInt(approx=1, delta=0)
     assert v.validate_python(1.0) == IsFloat(approx=1, delta=0)
@@ -379,17 +376,8 @@ def test_str_float():
     assert v.validate_json('"1"') == '1'
 
 
-def test_strict_check():
-    v = SchemaValidator(core_schema.union_schema([core_schema.int_schema(), core_schema.json_schema()]))
-    assert 'strict_required:true' in plain_repr(v)
-    assert 'ultra_strict_required:false' in plain_repr(v)
-
-
 def test_no_strict_check():
     v = SchemaValidator(core_schema.union_schema([core_schema.is_instance_schema(int), core_schema.json_schema()]))
-    assert 'strict_required:false' in plain_repr(v)
-    assert 'ultra_strict_required:false' in plain_repr(v)
-
     assert v.validate_python(123) == 123
     assert v.validate_python('[1, 2, 3]') == [1, 2, 3]
 
@@ -406,8 +394,6 @@ def test_strict_reference():
             ref='tuple-ref',
         )
     )
-    assert 'strict_required:true' in plain_repr(v)
-    assert 'ultra_strict_required:true' in plain_repr(v)  # since "float" schema has ultra-strict behaviour
 
     assert repr(v.validate_python((1, 2))) == '(1.0, 2)'
     assert repr(v.validate_python((1.0, (2.0, 3)))) == '(1.0, (2.0, 3))'

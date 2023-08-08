@@ -14,6 +14,7 @@ use speedate::MicrosecondsPrecisionOverflowBehavior;
 use crate::errors::{ErrorType, ErrorTypeDefaults, InputValue, LocItem, ValError, ValResult};
 use crate::tools::{extract_i64, safe_repr};
 use crate::validators::decimal::create_decimal;
+use crate::validators::Exactness;
 use crate::{ArgsKwargs, PyMultiHostUrl, PyUrl};
 
 use super::datetime::{
@@ -21,6 +22,7 @@ use super::datetime::{
     float_as_duration, float_as_time, int_as_datetime, int_as_duration, int_as_time, EitherDate, EitherDateTime,
     EitherTime,
 };
+use super::return_enums::ValidationMatch;
 use super::shared::{float_as_int, int_as_bool, map_json_err, str_as_bool, str_as_float, str_as_int};
 use super::{
     py_string_str, EitherBytes, EitherFloat, EitherInt, EitherString, EitherTimedelta, GenericArguments,
@@ -268,96 +270,81 @@ impl<'a> Input<'a> for PyAny {
         }
     }
 
-    fn strict_bool(&self) -> ValResult<bool> {
+    fn validate_bool(&self, strict: bool) -> ValResult<'_, ValidationMatch<bool>> {
         if let Ok(bool) = self.downcast::<PyBool>() {
-            Ok(bool.is_true())
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::BoolType, self))
+            return Ok(ValidationMatch::exact(bool.is_true()));
         }
-    }
 
-    fn lax_bool(&self) -> ValResult<bool> {
-        if let Ok(bool) = self.downcast::<PyBool>() {
-            Ok(bool.is_true())
-        } else if let Some(cow_str) = maybe_as_string(self, ErrorTypeDefaults::BoolParsing)? {
-            str_as_bool(self, &cow_str)
-        } else if let Ok(int) = extract_i64(self) {
-            int_as_bool(self, int)
-        } else if let Ok(float) = self.extract::<f64>() {
-            match float_as_int(self, float) {
-                Ok(int) => int
-                    .as_bool()
-                    .ok_or_else(|| ValError::new(ErrorTypeDefaults::BoolParsing, self)),
-                _ => Err(ValError::new(ErrorTypeDefaults::BoolType, self)),
+        if !strict {
+            if let Some(cow_str) = maybe_as_string(self, ErrorTypeDefaults::BoolParsing)? {
+                return str_as_bool(self, &cow_str).map(ValidationMatch::lax);
+            } else if let Ok(int) = extract_i64(self) {
+                return int_as_bool(self, int).map(ValidationMatch::lax);
+            } else if let Ok(float) = self.extract::<f64>() {
+                if let Ok(int) = float_as_int(self, float) {
+                    return int
+                        .as_bool()
+                        .ok_or_else(|| ValError::new(ErrorTypeDefaults::BoolParsing, self))
+                        .map(ValidationMatch::lax);
+                };
             }
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::BoolType, self))
         }
+
+        Err(ValError::new(ErrorTypeDefaults::BoolType, self))
     }
 
-    fn strict_int(&'a self) -> ValResult<EitherInt<'a>> {
-        if PyInt::is_exact_type_of(self) {
-            Ok(EitherInt::Py(self))
-        } else if PyInt::is_type_of(self) {
+    fn validate_int(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherInt<'a>>> {
+        if self.is_exact_instance_of::<PyInt>() {
+            return Ok(ValidationMatch::exact(EitherInt::Py(self)));
+        } else if self.is_instance_of::<PyInt>() {
             // bools are a subclass of int, so check for bool type in this specific case
-            if PyBool::is_exact_type_of(self) {
-                Err(ValError::new(ErrorTypeDefaults::IntType, self))
+            let exactness = if self.is_instance_of::<PyBool>() {
+                if strict {
+                    return Err(ValError::new(ErrorTypeDefaults::IntType, self));
+                }
+                Exactness::Lax
             } else {
-                Ok(EitherInt::Py(self))
+                Exactness::Strict
+            };
+            return Ok(ValidationMatch::new(EitherInt::Py(self), exactness));
+        }
+
+        if !strict {
+            if let Some(cow_str) = maybe_as_string(self, ErrorTypeDefaults::IntParsing)? {
+                return str_as_int(self, &cow_str).map(ValidationMatch::lax);
+            } else if let Ok(float) = self.extract::<f64>() {
+                return float_as_int(self, float).map(ValidationMatch::lax);
             }
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::IntType, self))
         }
+
+        Err(ValError::new(ErrorTypeDefaults::IntType, self))
     }
 
-    fn lax_int(&'a self) -> ValResult<EitherInt<'a>> {
-        if PyInt::is_exact_type_of(self) {
-            Ok(EitherInt::Py(self))
-        } else if let Some(cow_str) = maybe_as_string(self, ErrorTypeDefaults::IntParsing)? {
-            str_as_int(self, &cow_str)
-        } else if let Ok(float) = self.extract::<f64>() {
-            float_as_int(self, float)
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::IntType, self))
+    fn validate_float(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherFloat<'a>>> {
+        if let Ok(float) = self.downcast_exact::<PyFloat>() {
+            return Ok(ValidationMatch::exact(EitherFloat::Py(float)));
         }
-    }
 
-    fn ultra_strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        if self.is_instance_of::<PyInt>() {
-            Err(ValError::new(ErrorTypeDefaults::FloatType, self))
-        } else if let Ok(float) = self.downcast::<PyFloat>() {
-            Ok(EitherFloat::Py(float))
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::FloatType, self))
+        if !strict {
+            if let Some(cow_str) = maybe_as_string(self, ErrorTypeDefaults::FloatParsing)? {
+                // checking for bytes and string is fast, so do this before isinstance(float)
+                return str_as_float(self, &cow_str).map(ValidationMatch::lax);
+            }
         }
-    }
-    fn strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        if PyFloat::is_exact_type_of(self) {
-            // Safety: self is PyFloat
-            Ok(EitherFloat::Py(unsafe { self.downcast_unchecked::<PyFloat>() }))
-        } else if let Ok(float) = self.extract::<f64>() {
-            // bools are cast to floats as either 0.0 or 1.0, so check for bool type in this specific case
-            if (float == 0.0 || float == 1.0) && PyBool::is_exact_type_of(self) {
-                Err(ValError::new(ErrorTypeDefaults::FloatType, self))
+
+        if let Ok(float) = self.extract::<f64>() {
+            let exactness = if self.is_instance_of::<PyBool>() {
+                if strict {
+                    return Err(ValError::new(ErrorTypeDefaults::FloatType, self));
+                }
+                Exactness::Lax
             } else {
-                Ok(EitherFloat::F64(float))
-            }
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::FloatType, self))
+                Exactness::Strict
+            };
+            return Ok(ValidationMatch::new(EitherFloat::F64(float), exactness));
         }
-    }
 
-    fn lax_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        if PyFloat::is_exact_type_of(self) {
-            // Safety: self is PyFloat
-            Ok(EitherFloat::Py(unsafe { self.downcast_unchecked::<PyFloat>() }))
-        } else if let Some(cow_str) = maybe_as_string(self, ErrorTypeDefaults::FloatParsing)? {
-            str_as_float(self, &cow_str)
-        } else if let Ok(float) = self.extract::<f64>() {
-            Ok(EitherFloat::F64(float))
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::FloatType, self))
-        }
+        Err(ValError::new(ErrorTypeDefaults::FloatType, self))
     }
 
     fn strict_decimal(&'a self, decimal_type: &'a PyType) -> ValResult<&'a PyAny> {

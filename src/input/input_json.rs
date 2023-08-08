@@ -13,6 +13,7 @@ use super::datetime::{
     float_as_time, int_as_datetime, int_as_duration, int_as_time, EitherDate, EitherDateTime, EitherTime,
 };
 use super::parse_json::JsonArray;
+use super::return_enums::ValidationMatch;
 use super::shared::{float_as_int, int_as_bool, map_json_err, str_as_bool, str_as_float, str_as_int};
 use super::{
     EitherBytes, EitherFloat, EitherInt, EitherString, EitherTimedelta, GenericArguments, GenericIterable,
@@ -106,74 +107,41 @@ impl<'a> Input<'a> for JsonInput {
         self.validate_bytes(false)
     }
 
-    fn strict_bool(&self) -> ValResult<bool> {
+    fn validate_bool(&self, strict: bool) -> ValResult<'_, ValidationMatch<bool>> {
         match self {
-            JsonInput::Bool(b) => Ok(*b),
-            _ => Err(ValError::new(ErrorTypeDefaults::BoolType, self)),
-        }
-    }
-    fn lax_bool(&self) -> ValResult<bool> {
-        match self {
-            JsonInput::Bool(b) => Ok(*b),
-            JsonInput::String(s) => str_as_bool(self, s),
-            JsonInput::Int(int) => int_as_bool(self, *int),
-            JsonInput::Float(float) => match float_as_int(self, *float) {
+            JsonInput::Bool(b) => Ok(ValidationMatch::exact(*b)),
+            JsonInput::String(s) if !strict => str_as_bool(self, s).map(ValidationMatch::lax),
+            JsonInput::Int(int) if !strict => int_as_bool(self, *int).map(ValidationMatch::lax),
+            JsonInput::Float(float) if !strict => match float_as_int(self, *float) {
                 Ok(int) => int
                     .as_bool()
-                    .ok_or_else(|| ValError::new(ErrorTypeDefaults::BoolParsing, self)),
+                    .ok_or_else(|| ValError::new(ErrorTypeDefaults::BoolParsing, self))
+                    .map(ValidationMatch::lax),
                 _ => Err(ValError::new(ErrorTypeDefaults::BoolType, self)),
             },
             _ => Err(ValError::new(ErrorTypeDefaults::BoolType, self)),
         }
     }
 
-    fn strict_int(&'a self) -> ValResult<EitherInt<'a>> {
+    fn validate_int(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherInt<'a>>> {
         match self {
-            JsonInput::Int(i) => Ok(EitherInt::I64(*i)),
-            JsonInput::Uint(u) => Ok(EitherInt::U64(*u)),
-            JsonInput::BigInt(b) => Ok(EitherInt::BigInt(b.clone())),
-            _ => Err(ValError::new(ErrorTypeDefaults::IntType, self)),
-        }
-    }
-    fn lax_int(&'a self) -> ValResult<EitherInt<'a>> {
-        match self {
-            JsonInput::Bool(b) => match *b {
-                true => Ok(EitherInt::I64(1)),
-                false => Ok(EitherInt::I64(0)),
-            },
-            JsonInput::Int(i) => Ok(EitherInt::I64(*i)),
-            JsonInput::Uint(u) => Ok(EitherInt::U64(*u)),
-            JsonInput::BigInt(b) => Ok(EitherInt::BigInt(b.clone())),
-            JsonInput::Float(f) => float_as_int(self, *f),
-            JsonInput::String(str) => str_as_int(self, str),
+            JsonInput::Int(i) => Ok(ValidationMatch::exact(EitherInt::I64(*i))),
+            JsonInput::Uint(u) => Ok(ValidationMatch::exact(EitherInt::U64(*u))),
+            JsonInput::BigInt(b) => Ok(ValidationMatch::exact(EitherInt::BigInt(b.clone()))),
+            JsonInput::Bool(b) if !strict => Ok(ValidationMatch::lax(EitherInt::I64((*b).into()))),
+            JsonInput::Float(f) if !strict => float_as_int(self, *f).map(ValidationMatch::lax),
+            JsonInput::String(str) if !strict => str_as_int(self, str).map(ValidationMatch::lax),
             _ => Err(ValError::new(ErrorTypeDefaults::IntType, self)),
         }
     }
 
-    fn ultra_strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
+    fn validate_float(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherFloat<'a>>> {
         match self {
-            JsonInput::Float(f) => Ok(EitherFloat::F64(*f)),
-            _ => Err(ValError::new(ErrorTypeDefaults::FloatType, self)),
-        }
-    }
-    fn strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        match self {
-            JsonInput::Float(f) => Ok(EitherFloat::F64(*f)),
-            JsonInput::Int(i) => Ok(EitherFloat::F64(*i as f64)),
-            JsonInput::Uint(u) => Ok(EitherFloat::F64(*u as f64)),
-            _ => Err(ValError::new(ErrorTypeDefaults::FloatType, self)),
-        }
-    }
-    fn lax_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        match self {
-            JsonInput::Bool(b) => match *b {
-                true => Ok(EitherFloat::F64(1.0)),
-                false => Ok(EitherFloat::F64(0.0)),
-            },
-            JsonInput::Float(f) => Ok(EitherFloat::F64(*f)),
-            JsonInput::Int(i) => Ok(EitherFloat::F64(*i as f64)),
-            JsonInput::Uint(u) => Ok(EitherFloat::F64(*u as f64)),
-            JsonInput::String(str) => str_as_float(self, str),
+            JsonInput::Float(f) => Ok(ValidationMatch::exact(EitherFloat::F64(*f))),
+            JsonInput::Int(i) => Ok(ValidationMatch::strict(EitherFloat::F64(*i as f64))),
+            JsonInput::Uint(u) => Ok(ValidationMatch::strict(EitherFloat::F64(*u as f64))),
+            JsonInput::Bool(b) if !strict => Ok(ValidationMatch::lax(EitherFloat::F64(if *b { 1.0 } else { 0.0 }))),
+            JsonInput::String(str) if !strict => str_as_float(self, str).map(ValidationMatch::lax),
             _ => Err(ValError::new(ErrorTypeDefaults::FloatType, self)),
         }
     }
@@ -410,33 +378,31 @@ impl<'a> Input<'a> for String {
         self.validate_bytes(false)
     }
 
-    fn strict_bool(&self) -> ValResult<bool> {
-        Err(ValError::new(ErrorTypeDefaults::BoolType, self))
-    }
-    fn lax_bool(&self) -> ValResult<bool> {
-        str_as_bool(self, self)
-    }
-
-    fn strict_int(&'a self) -> ValResult<EitherInt<'a>> {
-        Err(ValError::new(ErrorTypeDefaults::IntType, self))
-    }
-    fn lax_int(&'a self) -> ValResult<EitherInt<'a>> {
-        match self.parse() {
-            Ok(i) => Ok(EitherInt::I64(i)),
-            Err(_) => Err(ValError::new(ErrorTypeDefaults::IntParsing, self)),
+    fn validate_bool(&self, strict: bool) -> ValResult<'_, ValidationMatch<bool>> {
+        if strict {
+            Err(ValError::new(ErrorTypeDefaults::BoolType, self))
+        } else {
+            str_as_bool(self, self).map(ValidationMatch::lax)
         }
     }
 
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn ultra_strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        self.strict_float()
+    fn validate_int(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherInt<'a>>> {
+        if strict {
+            Err(ValError::new(ErrorTypeDefaults::IntType, self))
+        } else {
+            match self.parse() {
+                Ok(i) => Ok(ValidationMatch::lax(EitherInt::I64(i))),
+                Err(_) => Err(ValError::new(ErrorTypeDefaults::IntParsing, self)),
+            }
+        }
     }
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        Err(ValError::new(ErrorTypeDefaults::FloatType, self))
-    }
-    fn lax_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        str_as_float(self, self)
+
+    fn validate_float(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherFloat<'a>>> {
+        if strict {
+            Err(ValError::new(ErrorTypeDefaults::FloatType, self))
+        } else {
+            str_as_float(self, self).map(ValidationMatch::lax)
+        }
     }
 
     fn strict_decimal(&'a self, decimal_type: &'a PyType) -> ValResult<&'a PyAny> {

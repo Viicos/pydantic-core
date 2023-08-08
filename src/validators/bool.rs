@@ -38,9 +38,9 @@ impl Validator for BoolValidator {
     ) -> ValResult<'data, PyObject> {
         // TODO in theory this could be quicker if we used PyBool rather than going to a bool
         // and back again, might be worth profiling?
-        let strict = state.strict_or(self.strict);
-        state.set_exactness_unknown();
-        Ok(input.validate_bool(strict)?.into_py(py))
+        input
+            .validate_bool(state.strict_or(self.strict))
+            .map(|val_match| val_match.unpack(state).into_py(py))
     }
 
     fn different_strict_behavior(

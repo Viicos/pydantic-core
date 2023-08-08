@@ -7,7 +7,6 @@ use crate::errors::{ErrorType, ErrorTypeDefaults, ValError, ValResult};
 use crate::input::Input;
 use crate::tools::SchemaDict;
 
-use super::validation_state::Exactness;
 use super::{BuildValidator, CombinedValidator, DefinitionsBuilder, ValidationState, Validator};
 
 pub struct FloatBuilder;
@@ -69,13 +68,9 @@ impl Validator for FloatValidator {
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
-        let strict = state.strict_or(self.strict);
-        let either_float = input.validate_float(strict, state.extra().ultra_strict)?;
+        let either_float = input.validate_float(state.strict_or(self.strict))?.unpack(state);
         if !self.allow_inf_nan && !either_float.as_f64().is_finite() {
             return Err(ValError::new(ErrorTypeDefaults::FiniteNumber, input));
-        }
-        if !state.extra().ultra_strict {
-            state.merge_exactness(Exactness::from_strict(strict));
         }
         Ok(either_float.into_py(py))
     }
@@ -117,8 +112,7 @@ impl Validator for ConstrainedFloatValidator {
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
-        let strict = state.strict_or(self.strict);
-        let either_float = input.validate_float(strict, state.extra().ultra_strict)?;
+        let either_float = input.validate_float(state.strict_or(self.strict))?.unpack(state);
         let float: f64 = either_float.as_f64();
         if !self.allow_inf_nan && !float.is_finite() {
             return Err(ValError::new(ErrorTypeDefaults::FiniteNumber, input));
@@ -179,9 +173,6 @@ impl Validator for ConstrainedFloatValidator {
                     input,
                 ));
             }
-        }
-        if !state.extra().ultra_strict {
-            state.merge_exactness(Exactness::from_strict(strict));
         }
         Ok(either_float.into_py(py))
     }

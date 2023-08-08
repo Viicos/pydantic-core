@@ -9,16 +9,6 @@ pub enum Exactness {
     Exact,
 }
 
-impl Exactness {
-    pub fn from_strict(strict: bool) -> Self {
-        if strict {
-            Self::Strict
-        } else {
-            Self::Lax
-        }
-    }
-}
-
 pub struct ValidationState<'a> {
     pub recursion_guard: &'a mut RecursionGuard,
     pub definitions: &'a Definitions<CombinedValidator>,

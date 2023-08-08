@@ -61,7 +61,7 @@ mod with_default;
 pub use with_default::DefaultType;
 
 use self::definitions::DefinitionRefValidator;
-pub use self::validation_state::ValidationState;
+pub use self::validation_state::{Exactness, ValidationState};
 
 #[pyclass(module = "pydantic_core._pydantic_core", name = "Some")]
 pub struct PySome {
@@ -243,7 +243,6 @@ impl SchemaValidator {
             data: None,
             strict,
             from_attributes,
-            ultra_strict: false,
             context,
             self_instance: None,
         };
@@ -262,7 +261,6 @@ impl SchemaValidator {
             data: None,
             strict,
             from_attributes: None,
-            ultra_strict: false,
             context,
             self_instance: None,
         };
@@ -541,8 +539,6 @@ pub struct Extra<'a> {
     pub data: Option<&'a PyDict>,
     /// whether we're in strict or lax mode
     pub strict: Option<bool>,
-    /// whether we're in ultra-strict mode, only used occasionally in unions
-    pub ultra_strict: bool,
     /// Validation time setting of `from_attributes`
     pub from_attributes: Option<bool>,
     /// context used in validator functions
@@ -563,7 +559,6 @@ impl<'a> Extra<'a> {
             mode,
             data: None,
             strict,
-            ultra_strict: false,
             from_attributes,
             context,
             self_instance,
@@ -572,12 +567,11 @@ impl<'a> Extra<'a> {
 }
 
 impl<'a> Extra<'a> {
-    pub fn as_strict(&self, ultra_strict: bool) -> Self {
+    pub fn as_strict(&self) -> Self {
         Self {
             mode: self.mode,
             data: self.data,
             strict: Some(true),
-            ultra_strict,
             from_attributes: self.from_attributes,
             context: self.context,
             self_instance: self.self_instance,
