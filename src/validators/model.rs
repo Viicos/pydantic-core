@@ -7,6 +7,7 @@ use pyo3::types::{PyDict, PySet, PyString, PyTuple, PyType};
 use pyo3::{ffi, intern};
 
 use super::function::convert_err;
+use super::validation_state::Exactness;
 use super::{
     build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Extra, ValidationState, Validator,
 };
@@ -143,6 +144,7 @@ impl Validator for ModelValidator {
                 Ok(input.to_object(py))
             }
         } else {
+            state.merge_exactness(Exactness::Lax);
             self.validate_construct(py, input, None, state)
         }
     }

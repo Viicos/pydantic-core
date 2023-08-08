@@ -8,8 +8,7 @@ use crate::errors::{ErrorType, ValError, ValResult};
 use crate::input::{Input, Int};
 use crate::tools::SchemaDict;
 
-use super::ValidationState;
-use super::{BuildValidator, CombinedValidator, DefinitionsBuilder, Validator};
+use super::{BuildValidator, CombinedValidator, DefinitionsBuilder, ValidationState, Validator};
 
 #[derive(Debug, Clone)]
 pub struct IntValidator {
@@ -51,6 +50,7 @@ impl Validator for IntValidator {
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
         let either_int = input.validate_int(state.strict_or(self.strict))?;
+        state.set_exactness_unknown();
         Ok(either_int.into_py(py))
     }
 
@@ -148,6 +148,7 @@ impl Validator for ConstrainedIntValidator {
                 ));
             }
         }
+        state.set_exactness_unknown();
         Ok(either_int.into_py(py))
     }
 

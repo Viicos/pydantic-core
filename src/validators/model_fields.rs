@@ -15,8 +15,9 @@ use crate::input::{
 use crate::lookup_key::LookupKey;
 use crate::tools::SchemaDict;
 
-use super::ValidationState;
-use super::{build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Extra, Validator};
+use super::{
+    build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Extra, ValidationState, Validator,
+};
 
 use std::ops::ControlFlow;
 

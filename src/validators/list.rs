@@ -135,6 +135,7 @@ impl Validator for ListValidator {
             },
         };
         min_length_check!(input, "List", self.min_length, output);
+        state.set_exactness_unknown();
         Ok(output.into_py(py))
     }
 

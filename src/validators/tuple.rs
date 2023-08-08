@@ -57,6 +57,7 @@ impl Validator for TupleVariableValidator {
             None => seq.to_vec(py, input, "Tuple", self.max_length)?,
         };
         min_length_check!(input, "Tuple", self.min_length, output);
+        state.set_exactness_unknown();
         Ok(PyTuple::new(py, &output).into_py(py))
     }
 
@@ -234,6 +235,7 @@ impl Validator for TuplePositionalValidator {
             other => iter!(other.as_sequence_iterator(py)?),
         }
         if errors.is_empty() {
+            state.set_exactness_unknown();
             Ok(PyTuple::new(py, &output).into_py(py))
         } else {
             Err(ValError::LineErrors(errors))

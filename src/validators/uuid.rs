@@ -114,6 +114,7 @@ impl Validator for UuidValidator {
                 input,
             ))
         } else {
+            state.set_exactness_unknown();
             let uuid = self.get_uuid(input)?;
             self.create_py_uuid(py, class, &uuid)
         }

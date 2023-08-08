@@ -45,6 +45,7 @@ impl Validator for FrozenSetValidator {
             state,
         )?;
         min_length_check!(input, "Frozenset", self.min_length, f_set);
+        state.set_exactness_unknown();
         Ok(f_set.into_py(py))
     }
 

@@ -100,6 +100,7 @@ impl Validator for TimeDeltaValidator {
             check_constraint!(ge, GreaterThanEqual);
             check_constraint!(gt, GreaterThan);
         }
+        state.set_exactness_unknown();
         Ok(py_timedelta.into())
     }
 

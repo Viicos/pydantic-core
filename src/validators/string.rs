@@ -46,6 +46,7 @@ impl Validator for StrValidator {
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
         let either_str = input.validate_str(state.strict_or(self.strict))?;
+        state.set_exactness_unknown();
         Ok(either_str.into_py(py))
     }
 
@@ -144,6 +145,7 @@ impl Validator for StrConstrainedValidator {
             // we haven't modified the string, return the original as it might be a PyString
             either_str.as_py_string(py)
         };
+        state.set_exactness_unknown();
         Ok(py_string.into_py(py))
     }
 

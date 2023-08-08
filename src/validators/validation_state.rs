@@ -2,9 +2,27 @@ use crate::{definitions::Definitions, recursion_guard::RecursionGuard};
 
 use super::{CombinedValidator, Extra};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Exactness {
+    Lax,
+    Strict,
+    Exact,
+}
+
+impl Exactness {
+    pub fn from_strict(strict: bool) -> Self {
+        if strict {
+            Self::Strict
+        } else {
+            Self::Lax
+        }
+    }
+}
+
 pub struct ValidationState<'a> {
     pub recursion_guard: &'a mut RecursionGuard,
     pub definitions: &'a Definitions<CombinedValidator>,
+    pub exactness: Option<Exactness>,
     // deliberately make Extra readonly
     extra: Extra<'a>,
 }
@@ -18,6 +36,8 @@ impl<'a> ValidationState<'a> {
         Self {
             recursion_guard,
             definitions,
+            // Don't care about exactness unless doing union validation
+            exactness: None,
             extra,
         }
     }
@@ -32,9 +52,15 @@ impl<'a> ValidationState<'a> {
         let mut new_state = ValidationState {
             recursion_guard: self.recursion_guard,
             definitions: self.definitions,
+            exactness: self.exactness,
             extra,
         };
-        f(&mut new_state)
+        let result = f(&mut new_state);
+        match new_state.exactness {
+            Some(exactness) => self.merge_exactness(exactness),
+            None => self.exactness = None,
+        }
+        result
     }
 
     /// Temporarily rebinds the extra field by calling `f` to modify extra.
@@ -55,6 +81,31 @@ impl<'a> ValidationState<'a> {
 
     pub fn strict_or(&self, default: bool) -> bool {
         self.extra.strict.unwrap_or(default)
+    }
+
+    /// Sets the exactness of this state to unknown.
+    ///
+    /// In general this de-optimizes union validation by forcing strict & lax validation passes,
+    /// so it's better to determine exactness and call `merge_exactness` when possible.
+    pub fn set_exactness_unknown(&mut self) {
+        self.exactness = None;
+    }
+
+    /// Sets the exactness to the lower of the current exactness
+    /// and the given exactness.
+    ///
+    /// This is designed to be used in union validation, where the
+    /// idea is that the "most exact" validation wins.
+    pub fn merge_exactness(&mut self, exactness: Exactness) {
+        match self.exactness {
+            None | Some(Exactness::Lax) => {}
+            Some(Exactness::Strict) => {
+                if exactness == Exactness::Lax {
+                    self.exactness = Some(Exactness::Lax);
+                }
+            }
+            Some(Exactness::Exact) => self.exactness = Some(exactness),
+        }
     }
 }
 

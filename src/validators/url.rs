@@ -87,7 +87,10 @@ impl Validator for UrlValidator {
             self.default_port,
             &self.default_path,
         ) {
-            Ok(()) => Ok(PyUrl::new(lib_url).into_py(py)),
+            Ok(()) => {
+                state.set_exactness_unknown();
+                Ok(PyUrl::new(lib_url).into_py(py))
+            }
             Err(error_type) => return Err(ValError::new(error_type, input)),
         }
     }
@@ -227,7 +230,10 @@ impl Validator for MultiHostUrlValidator {
             self.default_port,
             &self.default_path,
         ) {
-            Ok(()) => Ok(multi_url.into_py(py)),
+            Ok(()) => {
+                state.set_exactness_unknown();
+                Ok(multi_url.into_py(py))
+            }
             Err(error_type) => return Err(ValError::new(error_type, input)),
         }
     }

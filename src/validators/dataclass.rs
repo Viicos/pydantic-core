@@ -15,6 +15,7 @@ use crate::validators::function::convert_err;
 
 use super::arguments::{json_get, json_slice, py_get, py_slice};
 use super::model::{create_class, force_setattr, Revalidate};
+use super::validation_state::Exactness;
 use super::{
     build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Extra, ValidationState, Validator,
 };
@@ -499,6 +500,7 @@ impl Validator for DataclassValidator {
             ))
         } else {
             let val_output = self.validator.validate(py, input, state)?;
+            state.merge_exactness(Exactness::Lax);
             let dc = create_class(self.class.as_ref(py))?;
             self.set_dict_call(py, dc.as_ref(py), val_output, input)?;
             Ok(dc)

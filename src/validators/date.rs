@@ -93,6 +93,7 @@ impl Validator for DateValidator {
                 }
             }
         }
+        state.set_exactness_unknown();
         Ok(date.try_into_py(py)?)
     }
 

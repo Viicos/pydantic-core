@@ -75,6 +75,7 @@ impl Validator for TimeValidator {
                 tz_constraint.tz_check(raw_time.tz_offset, input)?;
             }
         }
+        state.set_exactness_unknown();
         Ok(time.try_into_py(py)?)
     }
 
