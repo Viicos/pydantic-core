@@ -50,14 +50,6 @@ impl Validator for StrValidator {
         Ok(either_str.into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        _definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        !ultra_strict
-    }
-
     fn get_name(&self) -> &str {
         Self::EXPECTED_TYPE
     }
@@ -147,14 +139,6 @@ impl Validator for StrConstrainedValidator {
         };
         state.set_exactness_unknown();
         Ok(py_string.into_py(py))
-    }
-
-    fn different_strict_behavior(
-        &self,
-        _definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        !ultra_strict
     }
 
     fn get_name(&self) -> &str {

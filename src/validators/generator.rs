@@ -73,18 +73,6 @@ impl Validator for GeneratorValidator {
         Ok(v_iterator.into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if let Some(ref v) = self.item_validator {
-            v.different_strict_behavior(definitions, ultra_strict)
-        } else {
-            false
-        }
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

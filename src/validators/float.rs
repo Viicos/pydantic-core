@@ -75,14 +75,6 @@ impl Validator for FloatValidator {
         Ok(either_float.into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        _definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        _ultra_strict: bool,
-    ) -> bool {
-        true
-    }
-
     fn get_name(&self) -> &str {
         Self::EXPECTED_TYPE
     }
@@ -175,14 +167,6 @@ impl Validator for ConstrainedFloatValidator {
             }
         }
         Ok(either_float.into_py(py))
-    }
-
-    fn different_strict_behavior(
-        &self,
-        _definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        _ultra_strict: bool,
-    ) -> bool {
-        true
     }
 
     fn get_name(&self) -> &str {

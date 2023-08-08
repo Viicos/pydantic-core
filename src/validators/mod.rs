@@ -708,14 +708,6 @@ pub trait Validator: Send + Sync + Clone + Debug {
         Err(py_err.into())
     }
 
-    /// whether the validator behaves differently in strict mode, and in ultra strict mode
-    /// implementations should return true if any of their sub-validators return true
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool;
-
     /// `get_name` generally returns `Self::EXPECTED_TYPE` or some other clear identifier of the validator
     /// this is used in the error location in unions, and in the top level message in `ValidationError`
     fn get_name(&self) -> &str;

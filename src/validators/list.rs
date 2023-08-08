@@ -139,21 +139,6 @@ impl Validator for ListValidator {
         Ok(output.into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            match self.item_validator {
-                Some(ref v) => v.different_strict_behavior(definitions, true),
-                None => false,
-            }
-        } else {
-            true
-        }
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

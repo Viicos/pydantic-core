@@ -302,16 +302,6 @@ impl Validator for UnionValidator {
         }
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        self.choices
-            .iter()
-            .any(|(v, _)| v.different_strict_behavior(definitions, ultra_strict))
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }
@@ -535,17 +525,6 @@ impl Validator for TaggedUnionValidator {
                 self.find_call_validator(py, self.self_schema_tag(py, input)?.as_ref(), input, state)
             }
         }
-    }
-
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        self.lookup
-            .values
-            .iter()
-            .any(|v| v.different_strict_behavior(definitions, ultra_strict))
     }
 
     fn get_name(&self) -> &str {

@@ -98,20 +98,6 @@ impl Validator for CallValidator {
         }
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if let Some(return_validator) = &self.return_validator {
-            if return_validator.different_strict_behavior(definitions, ultra_strict) {
-                return true;
-            }
-        }
-        self.arguments_validator
-            .different_strict_behavior(definitions, ultra_strict)
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

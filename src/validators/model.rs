@@ -208,18 +208,6 @@ impl Validator for ModelValidator {
         Ok(model.into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            self.validator.different_strict_behavior(definitions, ultra_strict)
-        } else {
-            true
-        }
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

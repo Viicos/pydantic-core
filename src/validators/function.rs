@@ -117,19 +117,6 @@ macro_rules! impl_validator {
                 self._validate(validate, py, obj, state)
             }
 
-            fn different_strict_behavior(
-                &self,
-                definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-                ultra_strict: bool,
-            ) -> bool {
-                if ultra_strict {
-                    self.validator
-                        .different_strict_behavior(definitions, ultra_strict)
-                } else {
-                    true
-                }
-            }
-
             fn get_name(&self) -> &str {
                 &self.name
             }
@@ -261,15 +248,6 @@ impl Validator for FunctionPlainValidator {
         r.map_err(|e| convert_err(py, e, input))
     }
 
-    fn different_strict_behavior(
-        &self,
-        _definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        // best guess, should we change this?
-        !ultra_strict
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }
@@ -386,18 +364,6 @@ impl Validator for FunctionWrapValidator {
             updated_field_value: field_value.to_object(py),
         };
         self._validate(Py::new(py, handler)?.into_ref(py), py, obj, state)
-    }
-
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            self.validator.different_strict_behavior(definitions, ultra_strict)
-        } else {
-            true
-        }
     }
 
     fn get_name(&self) -> &str {

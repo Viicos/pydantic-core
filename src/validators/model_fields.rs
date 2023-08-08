@@ -413,16 +413,6 @@ impl Validator for ModelFieldsValidator {
         Ok((new_data.to_object(py), new_extra, fields_set.to_object(py)).to_object(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        self.fields
-            .iter()
-            .any(|f| f.validator.different_strict_behavior(definitions, ultra_strict))
-    }
-
     fn get_name(&self) -> &str {
         Self::EXPECTED_TYPE
     }

@@ -49,18 +49,6 @@ impl Validator for FrozenSetValidator {
         Ok(f_set.into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            self.item_validator.different_strict_behavior(definitions, true)
-        } else {
-            true
-        }
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

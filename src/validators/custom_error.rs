@@ -99,14 +99,6 @@ impl Validator for CustomErrorValidator {
             .map_err(|_| self.custom_error.as_val_error(input))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        self.validator.different_strict_behavior(definitions, ultra_strict)
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

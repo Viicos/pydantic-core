@@ -61,14 +61,6 @@ impl Validator for IsSubclassValidator {
         }
     }
 
-    fn different_strict_behavior(
-        &self,
-        _definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        _ultra_strict: bool,
-    ) -> bool {
-        false
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }

@@ -61,21 +61,6 @@ impl Validator for TupleVariableValidator {
         Ok(PyTuple::new(py, &output).into_py(py))
     }
 
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            match self.item_validator {
-                Some(ref v) => v.different_strict_behavior(definitions, true),
-                None => false,
-            }
-        } else {
-            true
-        }
-    }
-
     fn get_name(&self) -> &str {
         &self.name
     }
@@ -239,28 +224,6 @@ impl Validator for TuplePositionalValidator {
             Ok(PyTuple::new(py, &output).into_py(py))
         } else {
             Err(ValError::LineErrors(errors))
-        }
-    }
-
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            if self
-                .items_validators
-                .iter()
-                .any(|v| v.different_strict_behavior(definitions, true))
-            {
-                true
-            } else if let Some(ref v) = self.extra_validator {
-                v.different_strict_behavior(definitions, true)
-            } else {
-                false
-            }
-        } else {
-            true
         }
     }
 
