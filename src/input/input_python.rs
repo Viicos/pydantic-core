@@ -298,7 +298,13 @@ impl<'a> Input<'a> for PyAny {
             } else {
                 Exactness::Strict
             };
-            return Ok(ValidationMatch::new(EitherInt::Py(self), exactness));
+            // extract a Rust value so that the subclass gets upcast to an int
+            return if let Ok(i64) = self.extract() {
+                Ok(ValidationMatch::new(EitherInt::I64(i64), exactness))
+            } else {
+                let big_int = self.extract()?;
+                Ok(ValidationMatch::new(EitherInt::BigInt(big_int), exactness))
+            };
         }
 
         if !strict {
