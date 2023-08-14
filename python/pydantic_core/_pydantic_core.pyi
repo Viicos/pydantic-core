@@ -171,6 +171,29 @@ class SchemaValidator:
         Returns:
             The validated Python object.
         """
+    def validate_string(
+        self, input: str | bytes | bytearray, *, strict: bool | None = None, context: 'dict[str, Any] | None' = None
+    ) -> Any:
+        """
+        Validate a string against the schema and return the validated Python object.
+
+        This is similar to `validate_json` but applies to scenarios where the input will be a string but not
+        JSON data, e.g. URL fragments, query parameters, etc.
+
+        Arguments:
+            input: The input as a string, or bytes/bytearray if `strict=False`.
+            strict: Whether to validate the object in strict mode.
+                If `None`, the value of [`CoreConfig.strict`][pydantic_core.core_schema.CoreConfig] is used.
+            context: The context to use for validation, this is passed to functional validators as
+                [`info.context`][pydantic_core.core_schema.ValidationInfo.context].
+
+        Raises:
+            ValidationError: If validation fails or if the JSON data is invalid.
+            Exception: Other error types maybe raised if internal errors occur.
+
+        Returns:
+            The validated Python object.
+        """
     def validate_assignment(
         self,
         obj: Any,

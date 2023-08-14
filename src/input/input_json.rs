@@ -395,47 +395,29 @@ impl<'a> Input<'a> for String {
         serde_json::from_str(self.as_str()).map_err(|e| map_json_err(self, e))
     }
 
-    fn validate_str(&'a self, _strict: bool) -> ValResult<EitherString<'a>> {
+    fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
         Ok(self.as_str().into())
     }
-    fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
-        self.validate_str(false)
-    }
 
-    fn validate_bytes(&'a self, _strict: bool) -> ValResult<EitherBytes<'a>> {
-        Ok(self.as_bytes().into())
-    }
-    #[cfg_attr(has_no_coverage, no_coverage)]
     fn strict_bytes(&'a self) -> ValResult<EitherBytes<'a>> {
-        self.validate_bytes(false)
+        Ok(self.as_bytes().into())
     }
 
     fn strict_bool(&self) -> ValResult<bool> {
-        Err(ValError::new(ErrorTypeDefaults::BoolType, self))
-    }
-    fn lax_bool(&self) -> ValResult<bool> {
         str_as_bool(self, self)
     }
 
     fn strict_int(&'a self) -> ValResult<EitherInt<'a>> {
-        Err(ValError::new(ErrorTypeDefaults::IntType, self))
-    }
-    fn lax_int(&'a self) -> ValResult<EitherInt<'a>> {
         match self.parse() {
             Ok(i) => Ok(EitherInt::I64(i)),
             Err(_) => Err(ValError::new(ErrorTypeDefaults::IntParsing, self)),
         }
     }
 
-    #[cfg_attr(has_no_coverage, no_coverage)]
     fn ultra_strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
         self.strict_float()
     }
-    #[cfg_attr(has_no_coverage, no_coverage)]
     fn strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
-        Err(ValError::new(ErrorTypeDefaults::FloatType, self))
-    }
-    fn lax_float(&'a self) -> ValResult<EitherFloat<'a>> {
         str_as_float(self, self)
     }
 
