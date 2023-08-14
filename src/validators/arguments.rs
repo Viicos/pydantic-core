@@ -7,7 +7,7 @@ use ahash::AHashSet;
 use crate::build_tools::py_schema_err;
 use crate::build_tools::schema_or_config_same;
 use crate::errors::{ErrorTypeDefaults, ValError, ValLineError, ValResult};
-use crate::input::{GenericArguments, Input};
+use crate::input::{GenericArguments, Input, ValidationMatch};
 use crate::lookup_key::LookupKey;
 
 use crate::tools::SchemaDict;
@@ -282,7 +282,7 @@ impl Validator for ArgumentsValidator {
                 if let Some(kwargs) = $args.kwargs {
                     if kwargs.len() > used_kwargs.len() {
                         for (raw_key, value) in kwargs.iter() {
-                            let either_str = match raw_key.strict_str() {
+                            let either_str = match raw_key.validate_str(true).map(ValidationMatch::into_inner) {
                                 Ok(k) => k,
                                 Err(ValError::LineErrors(line_errors)) => {
                                     for err in line_errors {

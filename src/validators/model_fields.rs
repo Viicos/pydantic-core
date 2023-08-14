@@ -10,7 +10,7 @@ use crate::build_tools::{is_strict, schema_or_config_same, ExtraBehavior};
 use crate::errors::{py_err_string, ErrorType, ErrorTypeDefaults, ValError, ValLineError, ValResult};
 use crate::input::{
     AttributesGenericIterator, DictGenericIterator, GenericMapping, Input, JsonObjectGenericIterator,
-    MappingGenericIterator,
+    MappingGenericIterator, ValidationMatch,
 };
 use crate::lookup_key::LookupKey;
 use crate::tools::SchemaDict;
@@ -237,7 +237,7 @@ impl Validator for ModelFieldsValidator {
                     let model_extra_dict = PyDict::new(py);
                     for item_result in <$iter>::new($dict)? {
                         let (raw_key, value) = item_result?;
-                        let either_str = match raw_key.strict_str() {
+                        let either_str = match raw_key.validate_str(true).map(ValidationMatch::into_inner) {
                             Ok(k) => k,
                             Err(ValError::LineErrors(line_errors)) => {
                                 for err in line_errors {

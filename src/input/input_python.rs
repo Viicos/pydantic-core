@@ -195,16 +195,34 @@ impl<'a> Input<'a> for PyAny {
         }
     }
 
-    fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
-        if let Ok(py_str) = <PyString as PyTryFrom>::try_from_exact(self) {
-            Ok(py_str.into())
+    fn validate_str(&'a self, strict: bool) -> ValResult<ValidationMatch<EitherString<'a>>> {
+        if let Ok(py_str) = self.downcast_exact::<PyString>() {
+            return Ok(ValidationMatch::exact(py_str.into()));
         } else if let Ok(py_str) = self.downcast::<PyString>() {
             // force to a rust string to make sure behavior is consistent whether or not we go via a
             // rust string in StrConstrainedValidator - e.g. to_lower
-            Ok(py_string_str(py_str)?.into())
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::StringType, self))
+            return Ok(ValidationMatch::strict(py_string_str(py_str)?.into()));
         }
+
+        if !strict {
+            if let Ok(bytes) = self.downcast::<PyBytes>() {
+                let str = match from_utf8(bytes.as_bytes()) {
+                    Ok(s) => s,
+                    Err(_) => return Err(ValError::new(ErrorTypeDefaults::StringUnicode, self)),
+                };
+                return Ok(ValidationMatch::lax(str.into()));
+            } else if let Ok(py_byte_array) = self.downcast::<PyByteArray>() {
+                // see https://docs.rs/pyo3/latest/pyo3/types/struct.PyByteArray.html#method.as_bytes
+                // for why this is marked unsafe
+                let str = match from_utf8(unsafe { py_byte_array.as_bytes() }) {
+                    Ok(s) => s,
+                    Err(_) => return Err(ValError::new(ErrorTypeDefaults::StringUnicode, self)),
+                };
+                return Ok(ValidationMatch::lax(str.into()));
+            }
+        }
+
+        Err(ValError::new(ErrorTypeDefaults::StringType, self))
     }
 
     fn exact_str(&'a self) -> ValResult<EitherString<'a>> {
@@ -220,32 +238,6 @@ impl<'a> Input<'a> for PyAny {
             Ok(EitherInt::Py(self))
         } else {
             Err(ValError::new(ErrorTypeDefaults::IntType, self))
-        }
-    }
-
-    fn lax_str(&'a self) -> ValResult<EitherString<'a>> {
-        if let Ok(py_str) = <PyString as PyTryFrom>::try_from_exact(self) {
-            Ok(py_str.into())
-        } else if let Ok(py_str) = self.downcast::<PyString>() {
-            // force to a rust string to make sure behaviour is consistent whether or not we go via a
-            // rust string in StrConstrainedValidator - e.g. to_lower
-            Ok(py_string_str(py_str)?.into())
-        } else if let Ok(bytes) = self.downcast::<PyBytes>() {
-            let str = match from_utf8(bytes.as_bytes()) {
-                Ok(s) => s,
-                Err(_) => return Err(ValError::new(ErrorTypeDefaults::StringUnicode, self)),
-            };
-            Ok(str.into())
-        } else if let Ok(py_byte_array) = self.downcast::<PyByteArray>() {
-            // see https://docs.rs/pyo3/latest/pyo3/types/struct.PyByteArray.html#method.as_bytes
-            // for why this is marked unsafe
-            let str = match from_utf8(unsafe { py_byte_array.as_bytes() }) {
-                Ok(s) => s,
-                Err(_) => return Err(ValError::new(ErrorTypeDefaults::StringUnicode, self)),
-            };
-            Ok(str.into())
-        } else {
-            Err(ValError::new(ErrorTypeDefaults::StringType, self))
         }
     }
 

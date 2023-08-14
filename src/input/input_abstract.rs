@@ -72,18 +72,7 @@ pub trait Input<'a>: fmt::Debug + ToPyObject + Sized {
 
     fn parse_json(&'a self) -> ValResult<'a, JsonInput>;
 
-    fn validate_str(&'a self, strict: bool) -> ValResult<EitherString<'a>> {
-        if strict {
-            self.strict_str()
-        } else {
-            self.lax_str()
-        }
-    }
-    fn strict_str(&'a self) -> ValResult<EitherString<'a>>;
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn lax_str(&'a self) -> ValResult<EitherString<'a>> {
-        self.strict_str()
-    }
+    fn validate_str(&'a self, strict: bool) -> ValResult<ValidationMatch<EitherString<'a>>>;
 
     fn validate_bytes(&'a self, strict: bool) -> ValResult<EitherBytes<'a>> {
         if strict {
@@ -113,7 +102,11 @@ pub trait Input<'a>: fmt::Debug + ToPyObject + Sized {
     /// Extract a String from the input, only allowing exact
     /// matches for a String (no subclasses)
     fn exact_str(&'a self) -> ValResult<EitherString<'a>> {
-        self.strict_str()
+        self.validate_str(true).and_then(|val_match| {
+            val_match
+                .require_exact()
+                .ok_or_else(|| ValError::new(ErrorTypeDefaults::StringType, self))
+        })
     }
 
     fn validate_float(&'a self, strict: bool) -> ValResult<'a, ValidationMatch<EitherFloat<'a>>>;

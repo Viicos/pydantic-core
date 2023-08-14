@@ -20,7 +20,7 @@ pub(crate) use parse_json::{JsonInput, JsonObject};
 pub(crate) use return_enums::{
     py_string_str, AttributesGenericIterator, DictGenericIterator, EitherBytes, EitherFloat, EitherInt, EitherString,
     GenericArguments, GenericIterable, GenericIterator, GenericMapping, Int, JsonArgs, JsonObjectGenericIterator,
-    MappingGenericIterator, PyArgs,
+    MappingGenericIterator, PyArgs, ValidationMatch,
 };
 
 // Defined here as it's not exported by pyo3

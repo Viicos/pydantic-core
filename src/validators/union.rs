@@ -548,7 +548,7 @@ impl TaggedUnionValidator {
         let dict = input.strict_dict()?;
         let either_tag = match dict {
             GenericMapping::PyDict(dict) => match dict.get_item(intern!(py, "type")) {
-                Some(t) => t.strict_str()?,
+                Some(t) => t.validate_str(true)?.into_inner(),
                 None => return Err(self.tag_not_found(input)),
             },
             _ => unreachable!(),
@@ -559,7 +559,7 @@ impl TaggedUnionValidator {
         if tag == "function" || tag == "tuple" {
             let mode = match dict {
                 GenericMapping::PyDict(dict) => match dict.get_item(intern!(py, "mode")) {
-                    Some(m) => Some(m.strict_str()?),
+                    Some(m) => Some(m.validate_str(true)?.into_inner()),
                     None => None,
                 },
                 _ => unreachable!(),

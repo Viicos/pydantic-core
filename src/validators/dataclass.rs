@@ -8,7 +8,7 @@ use ahash::AHashSet;
 use crate::build_tools::py_schema_err;
 use crate::build_tools::{is_strict, schema_or_config_same, ExtraBehavior};
 use crate::errors::{ErrorType, ErrorTypeDefaults, ValError, ValLineError, ValResult};
-use crate::input::{GenericArguments, Input};
+use crate::input::{GenericArguments, Input, ValidationMatch};
 use crate::lookup_key::LookupKey;
 use crate::tools::SchemaDict;
 use crate::validators::function::convert_err;
@@ -254,7 +254,7 @@ impl Validator for DataclassArgsValidator {
                         if let Some(kwargs) = $args.kwargs {
                             if kwargs.len() != used_keys.len() {
                                 for (raw_key, value) in kwargs.iter() {
-                                    match raw_key.strict_str() {
+                                    match raw_key.validate_str(true).map(ValidationMatch::into_inner) {
                                         Ok(either_str) => {
                                             if !used_keys.contains(either_str.as_cow()?.as_ref()) {
                                                 // Unknown / extra field

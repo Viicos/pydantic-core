@@ -83,15 +83,9 @@ impl<'a> Input<'a> for JsonInput {
         }
     }
 
-    fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
+    fn validate_str(&'a self, _strict: bool) -> ValResult<ValidationMatch<EitherString<'a>>> {
         match self {
-            JsonInput::String(s) => Ok(s.as_str().into()),
-            _ => Err(ValError::new(ErrorTypeDefaults::StringType, self)),
-        }
-    }
-    fn lax_str(&'a self) -> ValResult<EitherString<'a>> {
-        match self {
-            JsonInput::String(s) => Ok(s.as_str().into()),
+            JsonInput::String(s) => Ok(ValidationMatch::exact(s.as_str().into())),
             _ => Err(ValError::new(ErrorTypeDefaults::StringType, self)),
         }
     }
@@ -363,11 +357,8 @@ impl<'a> Input<'a> for String {
         serde_json::from_str(self.as_str()).map_err(|e| map_json_err(self, e))
     }
 
-    fn validate_str(&'a self, _strict: bool) -> ValResult<EitherString<'a>> {
-        Ok(self.as_str().into())
-    }
-    fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
-        self.validate_str(false)
+    fn validate_str(&'a self, _strict: bool) -> ValResult<ValidationMatch<EitherString<'a>>> {
+        Ok(ValidationMatch::exact(self.as_str().into()))
     }
 
     fn validate_bytes(&'a self, _strict: bool) -> ValResult<EitherBytes<'a>> {
