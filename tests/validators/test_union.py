@@ -1,4 +1,4 @@
-from enum import StrEnum, auto
+from enum import Enum
 from uuid import UUID
 
 import pytest
@@ -485,9 +485,12 @@ def test_left_to_right_union_strict():
 
 
 def test_union_function_before_called_once():
-    class SpecialValues(StrEnum):
-        DEFAULT = auto()
-        OTHER = auto()
+    # See https://github.com/pydantic/pydantic/issues/6830 - in particular the
+    # smart union validator used to call `remove_prefix` twice, which is not
+    # ideal from a user perspective.
+    class SpecialValues(str, Enum):
+        DEFAULT = 'default'
+        OTHER = 'other'
 
     special_values_schema = core_schema.no_info_after_validator_function(SpecialValues, core_schema.str_schema())
 
