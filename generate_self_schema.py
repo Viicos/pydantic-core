@@ -140,7 +140,7 @@ def type_dict_schema(typed_dict) -> dict[str, Any]:  # noqa: C901
                             'type': 'union',
                             'choices': [
                                 schema_ref_validator,
-                                {'type': 'tuple-positional', 'items_schema': [schema_ref_validator, {'type': 'str'}]},
+                                {'type': 'tuple', 'items_schema': [schema_ref_validator, {'type': 'str'}]},
                             ],
                         },
                     }

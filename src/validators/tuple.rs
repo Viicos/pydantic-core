@@ -1,102 +1,27 @@
 use pyo3::intern;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
+use std::collections::VecDeque;
 
 use crate::build_tools::is_strict;
-use crate::errors::{ErrorType, ErrorTypeDefaults, ValError, ValLineError, ValResult};
+use crate::errors::{py_err_string, ErrorType, ErrorTypeDefaults, ValError, ValLineError, ValResult};
 use crate::input::{GenericIterable, Input};
 use crate::tools::SchemaDict;
 
-use super::list::{get_items_schema, min_length_check};
 use super::{build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, ValidationState, Validator};
 
 #[derive(Debug, Clone)]
-pub struct TupleVariableValidator {
+pub struct TupleValidator {
     strict: bool,
-    item_validator: Option<Box<CombinedValidator>>,
+    validators: Vec<CombinedValidator>,
+    variadic_item_index: Option<usize>,
     min_length: Option<usize>,
     max_length: Option<usize>,
     name: String,
 }
 
-impl BuildValidator for TupleVariableValidator {
-    const EXPECTED_TYPE: &'static str = "tuple-variable";
-    fn build(
-        schema: &PyDict,
-        config: Option<&PyDict>,
-        definitions: &mut DefinitionsBuilder<CombinedValidator>,
-    ) -> PyResult<CombinedValidator> {
-        let py = schema.py();
-        let item_validator = get_items_schema(schema, config, definitions)?;
-        let inner_name = item_validator.as_ref().map_or("any", |v| v.get_name());
-        let name = format!("tuple[{inner_name}, ...]");
-        Ok(Self {
-            strict: is_strict(schema, config)?,
-            item_validator,
-            min_length: schema.get_as(intern!(py, "min_length"))?,
-            max_length: schema.get_as(intern!(py, "max_length"))?,
-            name,
-        }
-        .into())
-    }
-}
-
-impl_py_gc_traverse!(TupleVariableValidator { item_validator });
-
-impl Validator for TupleVariableValidator {
-    fn validate<'data>(
-        &self,
-        py: Python<'data>,
-        input: &'data impl Input<'data>,
-        state: &mut ValidationState,
-    ) -> ValResult<'data, PyObject> {
-        let seq = input.validate_tuple(state.strict_or(self.strict))?;
-
-        let output = match self.item_validator {
-            Some(ref v) => seq.validate_to_vec(py, input, self.max_length, "Tuple", v, state)?,
-            None => seq.to_vec(py, input, "Tuple", self.max_length)?,
-        };
-        min_length_check!(input, "Tuple", self.min_length, output);
-        Ok(PyTuple::new(py, &output).into_py(py))
-    }
-
-    fn different_strict_behavior(
-        &self,
-        definitions: Option<&DefinitionsBuilder<CombinedValidator>>,
-        ultra_strict: bool,
-    ) -> bool {
-        if ultra_strict {
-            match self.item_validator {
-                Some(ref v) => v.different_strict_behavior(definitions, true),
-                None => false,
-            }
-        } else {
-            true
-        }
-    }
-
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-
-    fn complete(&mut self, definitions: &DefinitionsBuilder<CombinedValidator>) -> PyResult<()> {
-        match self.item_validator {
-            Some(ref mut v) => v.complete(definitions),
-            None => Ok(()),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct TuplePositionalValidator {
-    strict: bool,
-    items_validators: Vec<CombinedValidator>,
-    extra_validator: Option<Box<CombinedValidator>>,
-    name: String,
-}
-
-impl BuildValidator for TuplePositionalValidator {
-    const EXPECTED_TYPE: &'static str = "tuple-positional";
+impl BuildValidator for TupleValidator {
+    const EXPECTED_TYPE: &'static str = "tuple";
     fn build(
         schema: &PyDict,
         config: Option<&PyDict>,
@@ -109,72 +34,168 @@ impl BuildValidator for TuplePositionalValidator {
             .map(|item| build_validator(item, config, definitions))
             .collect::<PyResult<_>>()?;
 
-        let descr = validators
-            .iter()
-            .map(Validator::get_name)
-            .collect::<Vec<_>>()
-            .join(", ");
+        let mut validator_names = validators.iter().map(Validator::get_name).collect::<Vec<_>>();
+        let variadic_item_index: Option<usize> = schema.get_as(intern!(py, "variadic_item_index"))?;
+        // FIXME add friendly schema error if item out of bounds
+        if let Some(variadic_item_index) = variadic_item_index {
+            validator_names.insert(variadic_item_index + 1, "...");
+        }
+        let name = format!("tuple[{}]", validator_names.join(", "));
+
         Ok(Self {
             strict: is_strict(schema, config)?,
-            items_validators: validators,
-            extra_validator: match schema.get_item(intern!(py, "extra_schema")) {
-                Some(v) => Some(Box::new(build_validator(v, config, definitions)?)),
-                None => None,
-            },
-            name: format!("tuple[{descr}]"),
+            validators,
+            variadic_item_index,
+            min_length: schema.get_as(intern!(py, "min_length"))?,
+            max_length: schema.get_as(intern!(py, "max_length"))?,
+            name,
         }
         .into())
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn validate_tuple_positional<'s, 'data, T: Iterator<Item = PyResult<&'data I>>, I: Input<'data> + 'data>(
-    py: Python<'data>,
-    input: &'data impl Input<'data>,
-    state: &mut ValidationState,
-    output: &mut Vec<PyObject>,
-    errors: &mut Vec<ValLineError<'data>>,
-    extra_validator: &Option<Box<CombinedValidator>>,
-    items_validators: &[CombinedValidator],
-    collection_iter: &mut T,
-    collection_len: Option<usize>,
-    expected_length: usize,
-) -> ValResult<'data, ()> {
-    for (index, validator) in items_validators.iter().enumerate() {
-        match collection_iter.next() {
-            Some(result) => match validator.validate(py, result?, state) {
-                Ok(item) => output.push(item),
-                Err(ValError::LineErrors(line_errors)) => {
-                    errors.extend(line_errors.into_iter().map(|err| err.with_outer_location(index.into())));
-                }
-                Err(err) => return Err(err),
-            },
-            None => {
-                if let Some(value) = validator.default_value(py, Some(index), state)? {
-                    output.push(value);
-                } else {
-                    errors.push(ValLineError::new_with_loc(ErrorTypeDefaults::Missing, input, index));
+impl_py_gc_traverse!(TupleValidator { validators });
+
+impl TupleValidator {
+    #[allow(clippy::too_many_arguments)]
+    fn validate_tuple_items<'s, 'data, I: Input<'data> + 'data>(
+        &self,
+        py: Python<'data>,
+        input: &'data impl Input<'data>,
+        state: &mut ValidationState,
+        output: &mut Vec<PyObject>,
+        errors: &mut Vec<ValLineError<'data>>,
+        item_validators: &[CombinedValidator],
+        collection_iter: &mut NextCountingIterator<impl Iterator<Item = &'data I>>,
+        collection_len: Option<usize>,
+    ) -> ValResult<'data, ()> {
+        // Validate the head:
+        for validator in item_validators {
+            match collection_iter.next() {
+                Some((index, input_item)) => match validator.validate(py, input_item, state) {
+                    Ok(item) => self.push_output_item(input, output, item, collection_len)?,
+                    Err(ValError::LineErrors(line_errors)) => {
+                        errors.extend(line_errors.into_iter().map(|err| err.with_outer_location(index.into())));
+                    }
+                    Err(ValError::Omit) => (),
+                    Err(err) => return Err(err),
+                },
+                None => {
+                    let index = collection_iter.next_calls() - 1;
+                    if let Some(value) = validator.default_value(py, Some(index), state)? {
+                        output.push(value);
+                    } else {
+                        errors.push(ValLineError::new_with_loc(ErrorTypeDefaults::Missing, input, index));
+                    }
                 }
             }
         }
+
+        Ok(())
     }
-    for (index, result) in collection_iter.enumerate() {
-        let item = result?;
-        match extra_validator {
-            Some(ref extra_validator) => match extra_validator.validate(py, item, state) {
-                Ok(item) => output.push(item),
-                Err(ValError::LineErrors(line_errors)) => {
-                    errors.extend(
-                        line_errors
-                            .into_iter()
-                            .map(|err| err.with_outer_location((index + expected_length).into())),
-                    );
+
+    #[allow(clippy::too_many_arguments)]
+    fn validate_tuple_variable<'data, I: Input<'data> + 'data, InputT: Input<'data> + 'data>(
+        &self,
+        py: Python<'data>,
+        input: &'data InputT,
+        state: &mut ValidationState,
+        errors: &mut Vec<ValLineError<'data>>,
+        collection_iter: &mut NextCountingIterator<impl Iterator<Item = &'data I>>,
+        collection_len: Option<usize>,
+    ) -> ValResult<'data, Vec<PyObject>> {
+        let expected_length = self.validators.len();
+        let mut output = Vec::with_capacity(expected_length);
+        if let Some(variable_validator_index) = self.variadic_item_index {
+            let (head_validators, [variable_validator, tail_validators @ ..]) = self.validators.split_at(variable_validator_index) else {
+                unreachable!("validators will always contain variable validator")
+            };
+
+            // Validate the "head" items
+            self.validate_tuple_items(
+                py,
+                input,
+                state,
+                &mut output,
+                errors,
+                head_validators,
+                collection_iter,
+                collection_len,
+            )?;
+
+            let n_tail_validators = tail_validators.len();
+            if n_tail_validators == 0 {
+                for (index, input_item) in collection_iter {
+                    match variable_validator.validate(py, input_item, state) {
+                        Ok(item) => self.push_output_item(input, &mut output, item, collection_len)?,
+                        Err(ValError::LineErrors(line_errors)) => {
+                            errors.extend(line_errors.into_iter().map(|err| err.with_outer_location(index.into())));
+                        }
+                        Err(ValError::Omit) => (),
+                        Err(err) => return Err(err),
+                    }
                 }
-                Err(ValError::Omit) => (),
-                Err(err) => return Err(err),
-            },
-            None => {
-                errors.push(ValLineError::new(
+            } else {
+                // Populate a buffer with the first n_tail_validators items
+                // NB: We take from collection_iter.inner to avoid increasing the next calls count
+                // while populating the buffer. This means the index in the following loop is the
+                // right one for user errors.
+                let mut tail_buffer: VecDeque<&'data I> =
+                    collection_iter.inner.by_ref().take(n_tail_validators).collect();
+
+                // Save the current index for the tail validation below when we recreate a new NextCountingIterator
+                let mut index = collection_iter.next_calls();
+
+                // Iterate over all remaining collection items, validating as items "leave" the buffer
+                for (buffer_item_index, input_item) in collection_iter {
+                    index = buffer_item_index;
+                    // This `unwrap` is safe because you can only get here
+                    // if there were at least `n_tail_validators` (> 0) items in the iterator
+                    let buffered_item = tail_buffer.pop_front().unwrap();
+                    tail_buffer.push_back(input_item);
+
+                    match variable_validator.validate(py, buffered_item, state) {
+                        Ok(item) => self.push_output_item(input, &mut output, item, collection_len)?,
+                        Err(ValError::LineErrors(line_errors)) => {
+                            errors.extend(
+                                line_errors
+                                    .into_iter()
+                                    .map(|err| err.with_outer_location(buffer_item_index.into())),
+                            );
+                        }
+                        Err(ValError::Omit) => (),
+                        Err(err) => return Err(err),
+                    }
+                }
+
+                // Validate the buffered items using the tail validators
+                self.validate_tuple_items(
+                    py,
+                    input,
+                    state,
+                    &mut output,
+                    errors,
+                    tail_validators,
+                    &mut NextCountingIterator::new(tail_buffer.into_iter(), index),
+                    collection_len,
+                )?;
+            }
+        } else {
+            // Validate all items as positional
+            self.validate_tuple_items(
+                py,
+                input,
+                state,
+                &mut output,
+                errors,
+                &self.validators,
+                collection_iter,
+                collection_len,
+            )?;
+
+            // Generate an error if there are any extra items:
+            if let Some((index, _)) = collection_iter.next() {
+                return Err(ValError::new(
                     ErrorType::TooLong {
                         field_type: "Tuple".to_string(),
                         max_length: expected_length,
@@ -183,56 +204,114 @@ fn validate_tuple_positional<'s, 'data, T: Iterator<Item = PyResult<&'data I>>, 
                     },
                     input,
                 ));
-                // no need to continue through further items
-                break;
             }
         }
+        Ok(output)
     }
-    Ok(())
+
+    fn push_output_item<'data>(
+        &self,
+        input: &'data impl Input<'data>,
+        output: &mut Vec<PyObject>,
+        item: PyObject,
+        collection_len: Option<usize>,
+    ) -> ValResult<'data, ()> {
+        output.push(item);
+        if let Some(max_length) = self.max_length {
+            if output.len() > max_length {
+                return Err(ValError::new(
+                    ErrorType::TooLong {
+                        field_type: "Tuple".to_string(),
+                        max_length,
+                        actual_length: collection_len.unwrap_or(output.len()),
+                        context: None,
+                    },
+                    input,
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
-impl_py_gc_traverse!(TuplePositionalValidator {
-    items_validators,
-    extra_validator
-});
-
-impl Validator for TuplePositionalValidator {
+impl Validator for TupleValidator {
     fn validate<'data>(
         &self,
         py: Python<'data>,
         input: &'data impl Input<'data>,
         state: &mut ValidationState,
     ) -> ValResult<'data, PyObject> {
-        let collection = input.validate_tuple(state.strict_or(self.strict))?;
-        let expected_length = self.items_validators.len();
+        let collection: GenericIterable<'_> = input.validate_tuple(state.strict_or(self.strict))?;
         let collection_len = collection.generic_len();
 
-        let mut output: Vec<PyObject> = Vec::with_capacity(expected_length);
         let mut errors: Vec<ValLineError> = Vec::new();
 
+        let mut iteration_error = None;
+
         macro_rules! iter {
-            ($collection_iter:expr) => {{
-                validate_tuple_positional(
+            ($collection_iter:expr) => {
+                self.validate_tuple_variable(
                     py,
                     input,
                     state,
-                    &mut output,
                     &mut errors,
-                    &self.extra_validator,
-                    &self.items_validators,
-                    &mut $collection_iter,
+                    &mut NextCountingIterator::new($collection_iter, 0),
                     collection_len,
-                    expected_length,
-                )?
-            }};
+                )
+            };
         }
 
-        match collection {
-            GenericIterable::List(collection_iter) => iter!(collection_iter.iter().map(Ok)),
-            GenericIterable::Tuple(collection_iter) => iter!(collection_iter.iter().map(Ok)),
-            GenericIterable::JsonArray(collection_iter) => iter!(collection_iter.iter().map(Ok)),
-            other => iter!(other.as_sequence_iterator(py)?),
+        let output = match collection {
+            GenericIterable::List(collection_iter) => iter!(collection_iter.iter())?,
+            GenericIterable::Tuple(collection_iter) => iter!(collection_iter.iter())?,
+            GenericIterable::JsonArray(collection_iter) => iter!(collection_iter.iter())?,
+            other => iter!({
+                let mut sequence_iterator = other.as_sequence_iterator(py)?;
+                let iteration_error = &mut iteration_error;
+                let mut index: usize = 0;
+                std::iter::from_fn(move || {
+                    if iteration_error.is_some() {
+                        return None;
+                    }
+                    index += 1;
+                    match sequence_iterator.next() {
+                        Some(Ok(item)) => Some(item),
+                        Some(Err(e)) => {
+                            *iteration_error = Some(ValError::new_with_loc(
+                                ErrorType::IterationError {
+                                    error: py_err_string(py, e),
+                                    context: None,
+                                },
+                                input,
+                                index,
+                            ));
+                            None
+                        }
+                        None => None,
+                    }
+                })
+            })?,
+        };
+
+        if let Some(err) = iteration_error {
+            return Err(err);
         }
+
+        if let Some(min_length) = self.min_length {
+            let actual_length = output.len();
+            if actual_length < min_length {
+                errors.push(ValLineError::new(
+                    ErrorType::TooShort {
+                        field_type: "Tuple".to_string(),
+                        min_length,
+                        actual_length,
+                        context: None,
+                    },
+                    input,
+                ));
+            }
+        }
+
         if errors.is_empty() {
             Ok(PyTuple::new(py, &output).into_py(py))
         } else {
@@ -246,17 +325,9 @@ impl Validator for TuplePositionalValidator {
         ultra_strict: bool,
     ) -> bool {
         if ultra_strict {
-            if self
-                .items_validators
+            self.validators
                 .iter()
                 .any(|v| v.different_strict_behavior(definitions, true))
-            {
-                true
-            } else if let Some(ref v) = self.extra_validator {
-                v.different_strict_behavior(definitions, true)
-            } else {
-                false
-            }
         } else {
             true
         }
@@ -267,12 +338,31 @@ impl Validator for TuplePositionalValidator {
     }
 
     fn complete(&mut self, definitions: &DefinitionsBuilder<CombinedValidator>) -> PyResult<()> {
-        self.items_validators
-            .iter_mut()
-            .try_for_each(|v| v.complete(definitions))?;
-        match &mut self.extra_validator {
-            Some(v) => v.complete(definitions),
-            None => Ok(()),
-        }
+        self.validators.iter_mut().try_for_each(|v| v.complete(definitions))
+    }
+}
+
+struct NextCountingIterator<I: Iterator> {
+    inner: I,
+    count: usize,
+}
+
+impl<I: Iterator> NextCountingIterator<I> {
+    fn new(inner: I, count: usize) -> Self {
+        Self { inner, count }
+    }
+
+    fn next_calls(&self) -> usize {
+        self.count
+    }
+}
+
+impl<I: Iterator> Iterator for NextCountingIterator<I> {
+    type Item = (usize, I::Item);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let count = self.count;
+        self.count += 1;
+        self.inner.next().map(|item| (count, item))
     }
 }

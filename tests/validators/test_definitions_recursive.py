@@ -317,7 +317,7 @@ def test_outside_parent():
                 'tuple1': {
                     'type': 'typed-dict-field',
                     'schema': {
-                        'type': 'tuple-positional',
+                        'type': 'tuple',
                         'items_schema': [{'type': 'int'}, {'type': 'int'}, {'type': 'str'}],
                         'ref': 'tuple-iis',
                     },
@@ -454,7 +454,7 @@ def multiple_tuple_schema() -> SchemaValidator:
                 'f1': {
                     'type': 'typed-dict-field',
                     'schema': {
-                        'type': 'tuple-positional',
+                        'type': 'tuple',
                         'items_schema': [
                             {'type': 'int'},
                             {'type': 'nullable', 'schema': {'type': 'definition-ref', 'schema_ref': 't'}},
@@ -559,7 +559,7 @@ def test_definition_wrap():
             'ref': 'wrapper',
             'function': {'type': 'general', 'function': wrap_func},
             'schema': {
-                'type': 'tuple-positional',
+                'type': 'tuple',
                 'items_schema': [
                     {'type': 'int'},
                     {'type': 'nullable', 'schema': {'type': 'definition-ref', 'schema_ref': 'wrapper'}},
