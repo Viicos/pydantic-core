@@ -28,12 +28,12 @@ pub fn list_all_errors(py: Python) -> PyResult<&PyList> {
             d.set_item("message_template_python", message_template_python)?;
             d.set_item(
                 "example_message_python",
-                error_type.render_message(py, &InputType::Python)?,
+                error_type.render_message(py, InputType::Python)?,
             )?;
             let message_template_json = error_type.message_template_json();
             if message_template_python != message_template_json {
                 d.set_item("message_template_json", message_template_json)?;
-                d.set_item("example_message_json", error_type.render_message(py, &InputType::Json)?)?;
+                d.set_item("example_message_json", error_type.render_message(py, InputType::Json)?)?;
             }
             d.set_item("example_context", error_type.py_dict(py)?)?;
             errors.push(d);
@@ -606,7 +606,7 @@ impl ErrorType {
         }
     }
 
-    pub fn render_message(&self, py: Python, input_type: &InputType) -> PyResult<String> {
+    pub fn render_message(&self, py: Python, input_type: InputType) -> PyResult<String> {
         let tmpl = match input_type {
             InputType::Python => self.message_template_python(),
             _ => self.message_template_json(),

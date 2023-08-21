@@ -163,7 +163,7 @@ impl PydanticKnownError {
     }
 
     pub fn message(&self, py: Python) -> PyResult<String> {
-        self.error_type.render_message(py, &InputType::Python)
+        self.error_type.render_message(py, InputType::Python)
     }
 
     fn __str__(&self, py: Python) -> PyResult<String> {

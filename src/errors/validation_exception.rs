@@ -77,7 +77,7 @@ impl ValidationError {
 
     pub fn display(&self, py: Python, prefix_override: Option<&'static str>, hide_input: bool) -> String {
         let url_prefix = get_url_prefix(py, include_url_env(py));
-        let line_errors = pretty_py_line_errors(py, &self.input_type, self.line_errors.iter(), url_prefix, hide_input);
+        let line_errors = pretty_py_line_errors(py, self.input_type, self.line_errors.iter(), url_prefix, hide_input);
         if let Some(prefix) = prefix_override {
             format!("{prefix}\n{line_errors}")
         } else {
@@ -185,7 +185,7 @@ impl ValidationError {
             let list: Py<PyList> = Py::from_owned_ptr(py, ptr);
 
             for (index, line_error) in (0_isize..).zip(&self.line_errors) {
-                let item = line_error.as_dict(py, url_prefix, include_context, &self.input_type)?;
+                let item = line_error.as_dict(py, url_prefix, include_context, self.input_type)?;
                 ffi::PyList_SET_ITEM(ptr, index, item.into_ptr());
             }
 
@@ -287,7 +287,7 @@ macro_rules! truncate_input_value {
 
 pub fn pretty_py_line_errors<'a>(
     py: Python,
-    input_type: &InputType,
+    input_type: InputType,
     line_errors_iter: impl Iterator<Item = &'a PyLineError>,
     url_prefix: Option<&str>,
     hide_input: bool,
@@ -377,7 +377,7 @@ impl PyLineError {
         py: Python,
         url_prefix: Option<&str>,
         include_context: bool,
-        input_type: &InputType,
+        input_type: InputType,
     ) -> PyResult<PyObject> {
         let dict = PyDict::new(py);
         dict.set_item("type", self.error_type.type_string())?;
@@ -405,7 +405,7 @@ impl PyLineError {
     fn pretty(
         &self,
         py: Python,
-        input_type: &InputType,
+        input_type: InputType,
         url_prefix: Option<&str>,
         hide_input: bool,
     ) -> Result<String, fmt::Error> {
@@ -520,7 +520,7 @@ impl<'py> Serialize for PyLineErrorSerializer<'py> {
         let msg = self
             .line_error
             .error_type
-            .render_message(py, self.input_type)
+            .render_message(py, *self.input_type)
             .map_err(py_err_json::<S>)?;
         map.serialize_entry("msg", &msg)?;
 
