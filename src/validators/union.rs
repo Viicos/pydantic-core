@@ -143,7 +143,8 @@ impl UnionValidator {
             // revalidate in strict mode
             for (choice, label) in &self.choices {
                 state.exactness = Some(Exactness::Exact);
-                match choice.validate(py, input, state) {
+                let result = choice.validate(py, input, state);
+                match result {
                     Ok(success) => match state.exactness {
                         // exact match, return
                         Some(Exactness::Exact) => return Ok(success),
@@ -199,60 +200,6 @@ impl UnionValidator {
 
         // no matches, build errors
         Err(errors.into_val_error(input))
-
-        // if ultra_strict_required {
-        //     // do an ultra strict check first
-        //     let state = &mut state.rebind_extra(|extra| {
-        //         extra.strict = Some(true);
-        //         extra.ultra_strict = true;
-        //     });
-        //     if let Some(res) = self
-        //         .choices
-        //         .iter()
-        //         .map(|(validator, _label)| validator.validate(py, input, state))
-        //         .find(ValResult::is_ok)
-        //     {
-        //         return res;
-        //     }
-        // }
-
-        // let mut errors = MaybeErrors::new(self.custom_error.as_ref());
-
-        // if state.strict_or(self.strict) {
-        //     let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
-        //     for (validator, label) in &self.choices {
-        //         match validator.validate(py, input, state) {
-        //             Err(ValError::LineErrors(lines)) => errors.push(validator, label.as_deref(), lines),
-        //             otherwise => return otherwise,
-        //         };
-        //     }
-
-        //     Err(errors.into_val_error(input))
-        // } else {
-        //     if strict_required {
-        //         // 1st pass: check if the value is an exact instance of one of the Union types,
-        //         // e.g. use validate in strict mode
-        //         let state = &mut state.rebind_extra(|extra| extra.strict = Some(true));
-        //         if let Some(res) = self
-        //             .choices
-        //             .iter()
-        //             .map(|(validator, _label)| validator.validate(py, input, state))
-        //             .find(ValResult::is_ok)
-        //         {
-        //             return res;
-        //         }
-        //     }
-
-        //     // 2nd pass: check if the value can be coerced into one of the Union types, e.g. use validate
-        //     for (validator, label) in &self.choices {
-        //         match validator.validate(py, input, state) {
-        //             Err(ValError::LineErrors(lines)) => errors.push(validator, label.as_deref(), lines),
-        //             otherwise => return otherwise,
-        //         };
-        //     }
-
-        //     Err(errors.into_val_error(input))
-        // }
     }
 
     fn validate_left_to_right<'data>(

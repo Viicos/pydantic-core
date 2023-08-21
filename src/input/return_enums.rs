@@ -52,7 +52,7 @@ impl<T> ValidationMatch<T> {
     }
 
     pub fn unpack(self, state: &mut ValidationState) -> T {
-        state.merge_exactness(self.1);
+        state.set_exactness_ceiling(self.1);
         self.0
     }
 

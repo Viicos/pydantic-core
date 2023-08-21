@@ -13,8 +13,8 @@ use crate::PydanticUseDefault;
 
 use super::generator::InternalValidator;
 use super::{
-    build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Extra, InputType, ValidationState,
-    Validator,
+    build_validator, BuildValidator, CombinedValidator, DefinitionsBuilder, Exactness, Extra, InputType,
+    ValidationState, Validator,
 };
 
 struct FunctionInfo {
@@ -100,6 +100,9 @@ macro_rules! impl_validator {
                 state: &mut ValidationState<'_>,
             ) -> ValResult<'data, PyObject> {
                 let validate = |v, s: &mut ValidationState<'_>| self.validator.validate(py, v, s);
+                // Rationale: calling a Python function may always introduce coercions, so it is
+                // never an "exact" match
+                state.set_exactness_ceiling(Exactness::Strict);
                 self._validate(validate, py, input.to_object(py).into_ref(py), state)
             }
             fn validate_assignment<'data>(
@@ -245,6 +248,9 @@ impl Validator for FunctionPlainValidator {
         } else {
             self.func.call1(py, (input.to_object(py),))
         };
+        // Rationale: calling a Python function may always introduce coercions, so it is
+        // never an "exact" match
+        state.set_exactness_ceiling(Exactness::Strict);
         r.map_err(|e| convert_err(py, e, input))
     }
 
@@ -336,6 +342,9 @@ impl Validator for FunctionWrapValidator {
                 self.hide_input_in_errors,
             ),
         };
+        // Rationale: calling a Python function may always introduce coercions, so it is
+        // never an "exact" match
+        state.set_exactness_ceiling(Exactness::Strict);
         self._validate(
             Py::new(py, handler)?.into_ref(py),
             py,

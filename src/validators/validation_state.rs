@@ -47,7 +47,7 @@ impl<'a> ValidationState<'a> {
         };
         let result = f(&mut new_state);
         match new_state.exactness {
-            Some(exactness) => self.merge_exactness(exactness),
+            Some(exactness) => self.set_exactness_ceiling(exactness),
             None => self.exactness = None,
         }
         result
@@ -76,7 +76,7 @@ impl<'a> ValidationState<'a> {
     /// Sets the exactness of this state to unknown.
     ///
     /// In general this de-optimizes union validation by forcing strict & lax validation passes,
-    /// so it's better to determine exactness and call `merge_exactness` when possible.
+    /// so it's better to determine exactness and call `set_exactness_ceiling` when possible.
     pub fn set_exactness_unknown(&mut self) {
         self.exactness = None;
     }
@@ -86,7 +86,7 @@ impl<'a> ValidationState<'a> {
     ///
     /// This is designed to be used in union validation, where the
     /// idea is that the "most exact" validation wins.
-    pub fn merge_exactness(&mut self, exactness: Exactness) {
+    pub fn set_exactness_ceiling(&mut self, exactness: Exactness) {
         match self.exactness {
             None | Some(Exactness::Lax) => {}
             Some(Exactness::Strict) => {

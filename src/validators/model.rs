@@ -144,7 +144,7 @@ impl Validator for ModelValidator {
                 Ok(input.to_object(py))
             }
         } else {
-            state.merge_exactness(Exactness::Lax);
+            state.set_exactness_ceiling(Exactness::Lax);
             self.validate_construct(py, input, None, state)
         }
     }
