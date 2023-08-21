@@ -703,7 +703,7 @@ class ValidationError(ValueError):
     def from_exception_data(
         title: str,
         line_errors: list[InitErrorDetails],
-        error_mode: Literal['python', 'json'] = 'python',
+        input_type: Literal['python', 'json'] = 'python',
         hide_input: bool = False,
     ) -> ValidationError:
         """
@@ -716,7 +716,7 @@ class ValidationError(ValueError):
             title: The title of the error, as used in the heading of `str(validation_error)`
             line_errors: A list of [`InitErrorDetails`][pydantic_core.InitErrorDetails] which contain information
                 about errors that occurred during validation.
-            error_mode: Whether the error is for a Python object or JSON.
+            input_type: Whether the error is for a Python object or JSON.
             hide_input: Whether to hide the input value in the error message.
         """
     @property
