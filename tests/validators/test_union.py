@@ -1,10 +1,13 @@
+from datetime import date, datetime, time
 from enum import Enum
+from typing import Type, TypeVar
 from uuid import UUID
 
 import pytest
 from dirty_equals import IsFloat, IsInt
+from pydantic.type_adapter import TypeAdapter
 
-from pydantic_core import SchemaError, SchemaValidator, ValidationError, core_schema
+from pydantic_core import MultiHostUrl, SchemaError, SchemaValidator, Url, ValidationError, core_schema
 
 from ..conftest import plain_repr
 
@@ -511,3 +514,54 @@ def test_union_function_before_called_once():
         '12345678-1234-5678-1234-567812345678'
     )
     assert validator_called_count == 1
+
+
+T = TypeVar('T')
+
+
+@pytest.mark.parametrize(
+    ('ty', 'input_value', 'expected_value'),
+    (
+        (UUID, '12345678-1234-5678-1234-567812345678', UUID('12345678-1234-5678-1234-567812345678')),
+        pytest.param(
+            date,
+            '2020-01-01',
+            date(2020, 1, 1),
+            marks=pytest.mark.xfail(reason='remove set_exactness_unknown from date validator'),
+        ),
+        pytest.param(
+            time,
+            '00:00:00',
+            time(0, 0, 0),
+            marks=pytest.mark.xfail(reason='remove set_exactness_unknown from time validator'),
+        ),
+        pytest.param(
+            datetime,
+            '2020-01-01:00:00:00',
+            datetime(2020, 1, 1, 0, 0, 0),
+            marks=pytest.mark.xfail(reason='remove set_exactness_unknown from datetime validator'),
+        ),
+        pytest.param(
+            Url,
+            'https://foo.com',
+            Url('https://foo.com'),
+            marks=pytest.mark.xfail(reason='remove set_exactness_unknown from url validator'),
+        ),
+        pytest.param(
+            MultiHostUrl,
+            'https://bar.com,foo.com',
+            MultiHostUrl('https://bar.com,foo.com'),
+            marks=pytest.mark.xfail(reason='remove set_exactness_unknown from multihosturl validator'),
+        ),
+    ),
+)
+def test_smart_union_json_string_types(ty: Type[T], input_value: str, expected_value: T):
+    # Many types have to be represented in strings as JSON, we make sure that
+    # when parsing in JSON mode these types are preferred
+    assert TypeAdapter(ty | str).validate_json(f'"{input_value}"') == expected_value
+    # in Python mode the string will be preferred
+    assert TypeAdapter(ty | str).validate_python(input_value) == input_value
+
+    # Repeat with reversed order
+    assert TypeAdapter(str | ty).validate_json(f'"{input_value}"') == expected_value
+    assert TypeAdapter(str | ty).validate_python(input_value) == input_value

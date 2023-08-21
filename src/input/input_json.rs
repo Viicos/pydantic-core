@@ -83,11 +83,21 @@ impl<'a> Input<'a> for JsonInput {
         }
     }
 
-    fn validate_str(&'a self, _strict: bool) -> ValResult<ValidationMatch<EitherString<'a>>> {
+    fn exact_str(&'a self) -> ValResult<EitherString<'a>> {
         match self {
-            JsonInput::String(s) => Ok(ValidationMatch::exact(s.as_str().into())),
+            // Justification for `strict` instead of `exact` is that in JSON strings can also
+            // represent other datatypes such as UUID and date more exactly, so string is a
+            // converting input
+            JsonInput::String(s) => Ok(s.as_str().into()),
             _ => Err(ValError::new(ErrorTypeDefaults::StringType, self)),
         }
+    }
+
+    fn validate_str(&'a self, _strict: bool) -> ValResult<ValidationMatch<EitherString<'a>>> {
+        // Justification for `strict` instead of `exact` is that in JSON strings can also
+        // represent other datatypes such as UUID and date more exactly, so string is a
+        // converting input
+        self.exact_str().map(ValidationMatch::strict)
     }
 
     fn validate_bytes(&'a self, _strict: bool) -> ValResult<EitherBytes<'a>> {
