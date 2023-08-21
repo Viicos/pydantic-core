@@ -6,6 +6,7 @@ mod datetime;
 mod input_abstract;
 mod input_json;
 mod input_python;
+mod input_string;
 mod parse_json;
 mod return_enums;
 mod shared;

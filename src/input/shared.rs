@@ -1,9 +1,9 @@
 use num_bigint::BigInt;
 
 use crate::errors::{ErrorType, ErrorTypeDefaults, ValError, ValResult};
-use crate::input::EitherInt;
 
-use super::{EitherFloat, Input};
+use super::parse_json::{JsonArray, JsonInput};
+use super::{EitherFloat, EitherInt, Input};
 
 pub fn map_json_err<'a>(input: &'a impl Input<'a>, error: serde_json::Error) -> ValError<'a> {
     ValError::new(
@@ -135,4 +135,8 @@ pub fn float_as_int<'a>(input: &'a impl Input<'a>, float: f64) -> ValResult<'a, 
     } else {
         Err(ValError::new(ErrorTypeDefaults::IntParsingSize, input))
     }
+}
+
+pub fn string_to_vec(s: &str) -> JsonArray {
+    s.chars().map(|c| JsonInput::String(c.to_string())).collect()
 }
