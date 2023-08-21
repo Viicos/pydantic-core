@@ -13,7 +13,7 @@ use crate::tools::SchemaDict;
 
 use super::model::create_class;
 use super::model::force_setattr;
-use super::{BuildValidator, CombinedValidator, DefinitionsBuilder, ValidationState, Validator};
+use super::{BuildValidator, CombinedValidator, DefinitionsBuilder, Exactness, ValidationState, Validator};
 
 const UUID_INT: &str = "int";
 const UUID_IS_SAFE: &str = "is_safe";
@@ -114,7 +114,11 @@ impl Validator for UuidValidator {
                 input,
             ))
         } else {
-            state.set_exactness_unknown();
+            state.set_exactness_ceiling(if input.is_python() {
+                Exactness::Lax
+            } else {
+                Exactness::Strict
+            });
             let uuid = self.get_uuid(input)?;
             self.create_py_uuid(py, class, &uuid)
         }

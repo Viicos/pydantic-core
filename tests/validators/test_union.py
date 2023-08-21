@@ -1,3 +1,6 @@
+from enum import StrEnum, auto
+from uuid import UUID
+
 import pytest
 from dirty_equals import IsFloat, IsInt
 
@@ -479,3 +482,27 @@ def test_left_to_right_union_strict():
     out = v.validate_python(1)
     assert out == 1.0
     assert isinstance(out, float)
+
+
+def test_union_function_before_called_once():
+    class SpecialValues(StrEnum):
+        DEFAULT = auto()
+        OTHER = auto()
+
+    special_values_schema = core_schema.no_info_after_validator_function(SpecialValues, core_schema.str_schema())
+
+    validator_called_count = 0
+
+    def remove_prefix(v: str):
+        nonlocal validator_called_count
+        validator_called_count += 1
+        return v.removeprefix('uuid::')
+
+    prefixed_uuid_schema = core_schema.no_info_before_validator_function(remove_prefix, core_schema.uuid_schema())
+
+    v = SchemaValidator(core_schema.union_schema([special_values_schema, prefixed_uuid_schema]))
+
+    assert v.validate_python('uuid::12345678-1234-5678-1234-567812345678') == UUID(
+        '12345678-1234-5678-1234-567812345678'
+    )
+    assert validator_called_count == 1
