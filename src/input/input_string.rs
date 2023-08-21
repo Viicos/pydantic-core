@@ -23,11 +23,6 @@ impl<'a> Input<'a> for String {
         InputValue::String(self)
     }
 
-    #[cfg_attr(has_no_coverage, no_coverage)]
-    fn is_none(&self) -> bool {
-        false
-    }
-
     fn as_kwargs(&'a self, _py: Python<'a>) -> Option<&'a PyDict> {
         None
     }

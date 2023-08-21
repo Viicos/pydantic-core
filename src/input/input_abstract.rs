@@ -55,7 +55,9 @@ pub trait Input<'a>: fmt::Debug + ToPyObject {
         None
     }
 
-    fn is_none(&self) -> bool;
+    fn is_none(&self) -> bool {
+        false
+    }
 
     fn input_is_instance(&self, _class: &PyType) -> Option<&PyAny> {
         None
