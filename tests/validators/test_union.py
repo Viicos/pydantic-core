@@ -499,7 +499,9 @@ def test_union_function_before_called_once():
     def remove_prefix(v: str):
         nonlocal validator_called_count
         validator_called_count += 1
-        return v.removeprefix('uuid::')
+        if v.startswith('uuid::'):
+            return v[6:]
+        return v
 
     prefixed_uuid_schema = core_schema.no_info_before_validator_function(remove_prefix, core_schema.uuid_schema())
 
