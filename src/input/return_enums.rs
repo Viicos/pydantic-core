@@ -519,7 +519,7 @@ impl<'py> StringMappingGenericIterator<'py> {
 
 impl<'py> Iterator for StringMappingGenericIterator<'py> {
     // key (the first member of the tuple could be a simple String)
-    type Item = ValResult<'py, (StringMapping<'py>, StringMapping<'py>)>;
+    type Item = ValResult<'py, (String, StringMapping<'py>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.dict_iter.next() {

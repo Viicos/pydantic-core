@@ -157,9 +157,9 @@ impl<'py> ToPyObject for StringMapping<'py> {
 }
 
 impl<'py> StringMapping<'py> {
-    pub fn new_key(py_value: &'py PyAny) -> ValResult<'py, Self> {
+    pub fn new_key(py_value: &'py PyAny) -> ValResult<'py, String> {
         if let Ok(value) = py_value.strict_str() {
-            Ok(Self::String(value.as_cow()?.to_string()))
+            Ok(value.as_cow()?.to_string())
         } else {
             Err(ValError::new(ErrorTypeDefaults::StringType, py_value))
         }
@@ -258,7 +258,7 @@ impl<'a> Input<'a> for StringMapping<'a> {
     fn strict_dict(&'a self) -> ValResult<GenericMapping<'a>> {
         match self {
             Self::String(_) => Err(ValError::new(ErrorTypeDefaults::DictType, self)),
-            Self::Mapping(d) => Ok(GenericMapping::StringMapping(*d)),
+            Self::Mapping(d) => Ok(GenericMapping::StringMapping(d)),
         }
     }
 
