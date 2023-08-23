@@ -62,9 +62,9 @@ impl<'a> ValError<'a> {
     }
 
     /// a bit like clone but change the lifetime to match py
-    pub fn duplicate<'py>(&self, py: Python<'py>) -> ValError<'py> {
+    pub fn duplicate(self, py: Python<'_>) -> ValError<'_> {
         match self {
-            ValError::LineErrors(errors) => errors.iter().map(|e| e.duplicate(py)).collect::<Vec<_>>().into(),
+            ValError::LineErrors(errors) => errors.into_iter().map(|e| e.duplicate(py)).collect::<Vec<_>>().into(),
             ValError::InternalErr(err) => ValError::InternalErr(err.clone_ref(py)),
             ValError::Omit => ValError::Omit,
             ValError::UseDefault => ValError::UseDefault,
@@ -130,11 +130,11 @@ impl<'a> ValLineError<'a> {
     }
 
     /// a bit like clone but change the lifetime to match py, used by ValError.duplicate above
-    pub fn duplicate<'py>(&'a self, py: Python<'py>) -> ValLineError<'py> {
+    pub fn duplicate<'py>(self, py: Python<'py>) -> ValLineError<'py> {
         ValLineError {
-            error_type: self.error_type.clone(),
+            error_type: self.error_type,
             input_value: InputValue::<'py>::from(self.input_value.to_object(py)),
-            location: self.location.clone(),
+            location: self.location,
         }
     }
 }

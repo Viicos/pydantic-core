@@ -50,3 +50,31 @@ def test_dict():
     v = SchemaValidator(core_schema.dict_schema(core_schema.int_schema(), core_schema.date_schema()))
 
     assert v.validate_string({'1': '2017-01-01', '2': '2017-01-02'}) == {1: date(2017, 1, 1), 2: date(2017, 1, 2)}
+    assert v.validate_string({'1': '2017-01-01', '2': '2017-01-02'}, strict=True) == {
+        1: date(2017, 1, 1),
+        2: date(2017, 1, 2),
+    }
+
+
+def test_model():
+    class MyModel:
+        # this is not required, but it avoids `__pydantic_fields_set__` being included in `__dict__`
+        __slots__ = '__dict__', '__pydantic_fields_set__', '__pydantic_extra__', '__pydantic_private__'
+        field_a: str
+        field_b: int
+
+    v = SchemaValidator(
+        core_schema.model_schema(
+            MyModel,
+            core_schema.model_fields_schema(
+                {
+                    'field_a': core_schema.model_field(core_schema.int_schema()),
+                    'field_b': core_schema.model_field(core_schema.date_schema()),
+                }
+            ),
+        )
+    )
+    m2 = v.validate_string({'field_a': '1', 'field_b': '2017-01-01'})
+    assert m2.__dict__ == {'field_a': 1, 'field_b': date(2017, 1, 1)}
+    m2 = v.validate_string({'field_a': '1', 'field_b': '2017-01-01'}, strict=True)
+    assert m2.__dict__ == {'field_a': 1, 'field_b': date(2017, 1, 1)}

@@ -125,7 +125,7 @@ impl Validator for DictValidator {
 /// This lifetime `'a` is shorter than the original lifetime `'data` of the input,
 /// which is only a problem in error branches. To resolve we have to call `duplicate`
 /// to extend out the lifetime to match the original input.
-trait BorrowInput {
+pub trait BorrowInput {
     type Input<'a>: Input<'a>
     where
         Self: 'a;
