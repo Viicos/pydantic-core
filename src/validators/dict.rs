@@ -4,7 +4,10 @@ use pyo3::types::PyDict;
 
 use crate::build_tools::is_strict;
 use crate::errors::{ValError, ValLineError, ValResult};
-use crate::input::{DictGenericIterator, GenericMapping, Input, JsonObjectGenericIterator, MappingGenericIterator};
+use crate::input::{
+    DictGenericIterator, GenericMapping, Input, JsonObjectGenericIterator, MappingGenericIterator,
+    StringMappingGenericIterator,
+};
 
 use crate::tools::SchemaDict;
 
@@ -77,6 +80,9 @@ impl Validator for DictValidator {
             }
             GenericMapping::PyMapping(mapping) => {
                 self.validate_generic_mapping(py, input, MappingGenericIterator::new(mapping)?, state)
+            }
+            GenericMapping::StringMapping(dict) => {
+                self.validate_generic_mapping(py, input, StringMappingGenericIterator::new(dict)?, state)
             }
             GenericMapping::PyGetAttr(_, _) => unreachable!(),
             GenericMapping::JsonObject(json_object) => {

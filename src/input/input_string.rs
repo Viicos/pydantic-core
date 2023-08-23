@@ -1,7 +1,10 @@
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyType};
 
+use speedate::MicrosecondsPrecisionOverflowBehavior;
+
 use crate::errors::{ErrorType, ErrorTypeDefaults, InputValue, LocItem, ValError, ValResult};
+use crate::tools::safe_repr;
 use crate::validators::decimal::create_decimal;
 
 use super::datetime::{
@@ -13,7 +16,7 @@ use super::{
     GenericIterator, GenericMapping, Input, JsonInput,
 };
 
-/// Required for Dict keys so the string can behave like an Input
+/// Required for JSON Object keys so the string can behave like an Input
 impl<'a> Input<'a> for String {
     fn as_loc_item(&self) -> LocItem {
         self.to_string().into()
@@ -118,22 +121,205 @@ impl<'a> Input<'a> for String {
 
     fn strict_time(
         &self,
-        microseconds_overflow_behavior: speedate::MicrosecondsPrecisionOverflowBehavior,
+        microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
     ) -> ValResult<EitherTime> {
         bytes_as_time(self, self.as_bytes(), microseconds_overflow_behavior)
     }
 
     fn strict_datetime(
         &self,
-        microseconds_overflow_behavior: speedate::MicrosecondsPrecisionOverflowBehavior,
+        microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
     ) -> ValResult<EitherDateTime> {
         bytes_as_datetime(self, self.as_bytes(), microseconds_overflow_behavior)
     }
 
     fn strict_timedelta(
         &self,
-        microseconds_overflow_behavior: speedate::MicrosecondsPrecisionOverflowBehavior,
+        microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
     ) -> ValResult<EitherTimedelta> {
         bytes_as_timedelta(self, self.as_bytes(), microseconds_overflow_behavior)
+    }
+}
+
+#[derive(Debug)]
+pub enum StringMapping<'py> {
+    String(String),
+    Mapping(&'py PyDict),
+}
+
+impl<'py> ToPyObject for StringMapping<'py> {
+    fn to_object(&self, py: Python<'_>) -> PyObject {
+        match self {
+            Self::String(s) => s.to_object(py),
+            Self::Mapping(d) => d.to_object(py),
+        }
+    }
+}
+
+impl<'py> StringMapping<'py> {
+    pub fn new_key(py_value: &'py PyAny) -> ValResult<'py, Self> {
+        if let Ok(value) = py_value.strict_str() {
+            Ok(Self::String(value.as_cow()?.to_string()))
+        } else {
+            Err(ValError::new(ErrorTypeDefaults::StringType, py_value))
+        }
+    }
+    pub fn new_value(py_value: &'py PyAny) -> ValResult<'py, Self> {
+        if let Ok(value) = py_value.strict_str() {
+            Ok(Self::String(value.as_cow()?.to_string()))
+        } else if let Ok(value) = py_value.downcast::<PyDict>() {
+            Ok(Self::Mapping(value))
+        } else {
+            Err(ValError::new(ErrorTypeDefaults::StringType, py_value))
+        }
+    }
+}
+
+impl<'a> Input<'a> for StringMapping<'a> {
+    fn as_loc_item(&self) -> LocItem {
+        match self {
+            Self::String(s) => s.as_loc_item(),
+            Self::Mapping(d) => safe_repr(d).to_string().into(),
+        }
+    }
+
+    fn as_error_value(&'a self) -> InputValue<'a> {
+        match self {
+            Self::String(s) => s.as_error_value(),
+            Self::Mapping(d) => InputValue::PyAny(d),
+        }
+    }
+
+    fn as_kwargs(&'a self, _py: Python<'a>) -> Option<&'a PyDict> {
+        None
+    }
+
+    fn validate_args(&'a self) -> ValResult<'a, GenericArguments<'a>> {
+        todo!()
+    }
+
+    fn validate_dataclass_args(&'a self, _dataclass_name: &str) -> ValResult<'a, GenericArguments<'a>> {
+        self.validate_args()
+    }
+
+    fn parse_json(&'a self) -> ValResult<'a, JsonInput> {
+        match self {
+            Self::String(s) => s.parse_json(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::JsonType, self)),
+        }
+    }
+
+    fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
+        match self {
+            Self::String(s) => s.strict_str(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::StringType, self)),
+        }
+    }
+
+    fn strict_bytes(&'a self) -> ValResult<EitherBytes<'a>> {
+        match self {
+            Self::String(s) => s.strict_bytes(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::BytesType, self)),
+        }
+    }
+
+    fn strict_bool(&self) -> ValResult<bool> {
+        match self {
+            Self::String(s) => s.strict_bool(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::BoolType, self)),
+        }
+    }
+
+    fn strict_int(&'a self) -> ValResult<EitherInt<'a>> {
+        match self {
+            Self::String(s) => s.strict_int(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::IntType, self)),
+        }
+    }
+
+    fn ultra_strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
+        self.strict_float()
+    }
+
+    fn strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
+        match self {
+            Self::String(s) => s.strict_float(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::FloatType, self)),
+        }
+    }
+
+    fn strict_decimal(&'a self, decimal_type: &'a PyType) -> ValResult<&'a PyAny> {
+        match self {
+            Self::String(s) => s.strict_decimal(decimal_type),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::DecimalType, self)),
+        }
+    }
+
+    fn strict_dict(&'a self) -> ValResult<GenericMapping<'a>> {
+        match self {
+            Self::String(_) => Err(ValError::new(ErrorTypeDefaults::DictType, self)),
+            Self::Mapping(d) => Ok(GenericMapping::StringMapping(*d)),
+        }
+    }
+
+    fn strict_list(&'a self) -> ValResult<GenericIterable<'a>> {
+        Err(ValError::new(ErrorTypeDefaults::ListType, self))
+    }
+
+    fn strict_tuple(&'a self) -> ValResult<GenericIterable<'a>> {
+        Err(ValError::new(ErrorTypeDefaults::TupleType, self))
+    }
+
+    fn strict_set(&'a self) -> ValResult<GenericIterable<'a>> {
+        Err(ValError::new(ErrorTypeDefaults::SetType, self))
+    }
+
+    fn strict_frozenset(&'a self) -> ValResult<GenericIterable<'a>> {
+        Err(ValError::new(ErrorTypeDefaults::FrozenSetType, self))
+    }
+
+    fn extract_generic_iterable(&'a self) -> ValResult<GenericIterable<'a>> {
+        Err(ValError::new(ErrorTypeDefaults::IterableType, self))
+    }
+
+    fn validate_iter(&self) -> ValResult<GenericIterator> {
+        Err(ValError::new(ErrorTypeDefaults::IterableType, self))
+    }
+
+    fn strict_date(&self) -> ValResult<EitherDate> {
+        match self {
+            Self::String(s) => s.strict_date(),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::DateType, self)),
+        }
+    }
+
+    fn strict_time(
+        &self,
+        microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
+    ) -> ValResult<EitherTime> {
+        match self {
+            Self::String(s) => s.strict_time(microseconds_overflow_behavior),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::TimeType, self)),
+        }
+    }
+
+    fn strict_datetime(
+        &self,
+        microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
+    ) -> ValResult<EitherDateTime> {
+        match self {
+            Self::String(s) => s.strict_datetime(microseconds_overflow_behavior),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::DatetimeType, self)),
+        }
+    }
+
+    fn strict_timedelta(
+        &self,
+        microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
+    ) -> ValResult<EitherTimedelta> {
+        match self {
+            Self::String(s) => s.strict_timedelta(microseconds_overflow_behavior),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::TimeDeltaType, self)),
+        }
     }
 }
