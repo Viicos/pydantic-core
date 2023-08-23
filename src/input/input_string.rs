@@ -1,9 +1,10 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyType};
+use pyo3::types::{PyDict, PyString, PyType};
 
 use speedate::MicrosecondsPrecisionOverflowBehavior;
 
 use crate::errors::{ErrorType, ErrorTypeDefaults, InputValue, LocItem, ValError, ValResult};
+use crate::input::py_string_str;
 use crate::tools::safe_repr;
 use crate::validators::decimal::create_decimal;
 
@@ -143,7 +144,7 @@ impl<'a> Input<'a> for String {
 
 #[derive(Debug)]
 pub enum StringMapping<'py> {
-    String(String),
+    String(&'py PyString),
     Mapping(&'py PyDict),
 }
 
@@ -157,16 +158,17 @@ impl<'py> ToPyObject for StringMapping<'py> {
 }
 
 impl<'py> StringMapping<'py> {
-    pub fn new_key(py_value: &'py PyAny) -> ValResult<'py, String> {
-        if let Ok(value) = py_value.strict_str() {
-            Ok(value.as_cow()?.to_string())
+    pub fn new_key(py_key: &'py PyAny) -> ValResult<'py, StringMapping> {
+        if let Ok(py_str) = py_key.downcast::<PyString>() {
+            Ok(Self::String(py_str))
         } else {
-            Err(ValError::new(ErrorTypeDefaults::StringType, py_value))
+            Err(ValError::new(ErrorTypeDefaults::StringType, py_key))
         }
     }
+
     pub fn new_value(py_value: &'py PyAny) -> ValResult<'py, Self> {
-        if let Ok(value) = py_value.strict_str() {
-            Ok(Self::String(value.as_cow()?.to_string()))
+        if let Ok(py_str) = py_value.downcast::<PyString>() {
+            Ok(Self::String(py_str))
         } else if let Ok(value) = py_value.downcast::<PyDict>() {
             Ok(Self::Mapping(value))
         } else {
@@ -178,7 +180,7 @@ impl<'py> StringMapping<'py> {
 impl<'a> Input<'a> for StringMapping<'a> {
     fn as_loc_item(&self) -> LocItem {
         match self {
-            Self::String(s) => s.as_loc_item(),
+            Self::String(s) => s.to_string_lossy().as_ref().into(),
             Self::Mapping(d) => safe_repr(d).to_string().into(),
         }
     }
@@ -195,7 +197,8 @@ impl<'a> Input<'a> for StringMapping<'a> {
     }
 
     fn validate_args(&'a self) -> ValResult<'a, GenericArguments<'a>> {
-        todo!()
+        // do we want to support this?
+        Err(ValError::new(ErrorTypeDefaults::ArgumentsType, self))
     }
 
     fn validate_dataclass_args(&'a self, _dataclass_name: &str) -> ValResult<'a, GenericArguments<'a>> {
@@ -204,35 +207,51 @@ impl<'a> Input<'a> for StringMapping<'a> {
 
     fn parse_json(&'a self) -> ValResult<'a, JsonInput> {
         match self {
-            Self::String(s) => s.parse_json(),
+            Self::String(s) => {
+                let str = py_string_str(s)?;
+                serde_json::from_str(str).map_err(|e| map_json_err(self, e))
+            }
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::JsonType, self)),
         }
     }
 
     fn strict_str(&'a self) -> ValResult<EitherString<'a>> {
         match self {
-            Self::String(s) => s.strict_str(),
+            Self::String(s) => Ok((*s).into()),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::StringType, self)),
         }
     }
 
     fn strict_bytes(&'a self) -> ValResult<EitherBytes<'a>> {
         match self {
-            Self::String(s) => s.strict_bytes(),
+            Self::String(s) => py_string_str(s).map(|b| b.as_bytes().into()),
+            Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::BytesType, self)),
+        }
+    }
+
+    fn lax_bytes(&'a self) -> ValResult<EitherBytes<'a>> {
+        match self {
+            Self::String(s) => {
+                let str = py_string_str(s)?;
+                Ok(str.as_bytes().into())
+            }
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::BytesType, self)),
         }
     }
 
     fn strict_bool(&self) -> ValResult<bool> {
         match self {
-            Self::String(s) => s.strict_bool(),
+            Self::String(s) => str_as_bool(self, py_string_str(s)?),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::BoolType, self)),
         }
     }
 
     fn strict_int(&'a self) -> ValResult<EitherInt<'a>> {
         match self {
-            Self::String(s) => s.strict_int(),
+            Self::String(s) => match py_string_str(s)?.parse() {
+                Ok(i) => Ok(EitherInt::I64(i)),
+                Err(_) => Err(ValError::new(ErrorTypeDefaults::IntParsing, self)),
+            },
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::IntType, self)),
         }
     }
@@ -243,14 +262,14 @@ impl<'a> Input<'a> for StringMapping<'a> {
 
     fn strict_float(&'a self) -> ValResult<EitherFloat<'a>> {
         match self {
-            Self::String(s) => s.strict_float(),
+            Self::String(s) => str_as_float(self, py_string_str(s)?),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::FloatType, self)),
         }
     }
 
     fn strict_decimal(&'a self, decimal_type: &'a PyType) -> ValResult<&'a PyAny> {
         match self {
-            Self::String(s) => s.strict_decimal(decimal_type),
+            Self::String(s) => create_decimal(s, self, decimal_type),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::DecimalType, self)),
         }
     }
@@ -288,7 +307,7 @@ impl<'a> Input<'a> for StringMapping<'a> {
 
     fn strict_date(&self) -> ValResult<EitherDate> {
         match self {
-            Self::String(s) => s.strict_date(),
+            Self::String(s) => bytes_as_date(self, py_string_str(s)?.as_bytes()),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::DateType, self)),
         }
     }
@@ -298,7 +317,7 @@ impl<'a> Input<'a> for StringMapping<'a> {
         microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
     ) -> ValResult<EitherTime> {
         match self {
-            Self::String(s) => s.strict_time(microseconds_overflow_behavior),
+            Self::String(s) => bytes_as_time(self, py_string_str(s)?.as_bytes(), microseconds_overflow_behavior),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::TimeType, self)),
         }
     }
@@ -308,7 +327,7 @@ impl<'a> Input<'a> for StringMapping<'a> {
         microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
     ) -> ValResult<EitherDateTime> {
         match self {
-            Self::String(s) => s.strict_datetime(microseconds_overflow_behavior),
+            Self::String(s) => bytes_as_datetime(self, py_string_str(s)?.as_bytes(), microseconds_overflow_behavior),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::DatetimeType, self)),
         }
     }
@@ -318,7 +337,7 @@ impl<'a> Input<'a> for StringMapping<'a> {
         microseconds_overflow_behavior: MicrosecondsPrecisionOverflowBehavior,
     ) -> ValResult<EitherTimedelta> {
         match self {
-            Self::String(s) => s.strict_timedelta(microseconds_overflow_behavior),
+            Self::String(s) => bytes_as_timedelta(self, py_string_str(s)?.as_bytes(), microseconds_overflow_behavior),
             Self::Mapping(_) => Err(ValError::new(ErrorTypeDefaults::TimeDeltaType, self)),
         }
     }
