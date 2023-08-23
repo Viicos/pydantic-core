@@ -52,6 +52,8 @@ _recursion_limit: int
 
 _T = TypeVar('_T', default=Any, covariant=True)
 
+_StringInput: TypeAlias = 'dict[str, _StringInput]'
+
 @final
 class Some(Generic[_T]):
     """
@@ -172,7 +174,7 @@ class SchemaValidator:
             The validated Python object.
         """
     def validate_string(
-        self, input: str | bytes | bytearray, *, strict: bool | None = None, context: 'dict[str, Any] | None' = None
+        self, input: _StringInput, *, strict: bool | None = None, context: 'dict[str, Any] | None' = None
     ) -> Any:
         """
         Validate a string against the schema and return the validated Python object.

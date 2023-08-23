@@ -11,7 +11,7 @@ use pyo3::{intern, PyTraverseError, PyVisit};
 use crate::build_tools::{py_schema_err, py_schema_error_type, SchemaError};
 use crate::definitions::DefinitionsBuilder;
 use crate::errors::{LocItem, ValError, ValResult, ValidationError};
-use crate::input::{Input, InputType};
+use crate::input::{Input, InputType, StringMapping};
 use crate::py_gc::PyGcTraverse;
 use crate::recursion_guard::RecursionGuard;
 use crate::tools::SchemaDict;
@@ -234,22 +234,11 @@ impl SchemaValidator {
         strict: Option<bool>,
         context: Option<&PyAny>,
     ) -> PyResult<PyObject> {
-        let r = match input.validate_str(strict.unwrap_or(false)) {
-            Ok(either_str) => match either_str.as_cow() {
-                Ok(cow) => Ok(cow.to_string()),
-                Err(e) => Err(e),
-            },
-            Err(e) => Err(e),
-        };
-
         let t = InputType::String;
-        let s = match r {
-            Ok(s) => s,
-            Err(e) => return Err(self.prepare_validation_err(py, e, t)),
-        };
+        let string_mapping = StringMapping::new_value(input).map_err(|e| self.prepare_validation_err(py, e, t))?;
 
         let recursion_guard = &mut RecursionGuard::default();
-        match self._validate(py, &s, t, strict, None, context, None, recursion_guard) {
+        match self._validate(py, &string_mapping, t, strict, None, context, None, recursion_guard) {
             Ok(r) => Ok(r),
             Err(e) => Err(self.prepare_validation_err(py, e, t)),
         }

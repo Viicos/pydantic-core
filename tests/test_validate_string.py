@@ -15,16 +15,6 @@ def test_bool():
     assert v.validate_string('true', strict=True) is True
     assert v.validate_string('false') is False
 
-    assert v.validate_string(b'true') is True
-    with pytest.raises(ValidationError) as exc_info:
-        v.validate_string(b'true', strict=True)
-    # insert_assert(exc_info.value.errors())
-    assert exc_info.value.errors(include_url=False) == [
-        {'type': 'string_type', 'loc': (), 'msg': 'Input should be a valid string', 'input': b'true'}
-    ]
-
-    assert v.validate_string(bytearray(b'true')) is True
-
 
 @pytest.mark.parametrize(
     'schema,input_value,expected,strict',
@@ -54,3 +44,9 @@ def test_validate_string(schema, input_value, expected, strict):
             v.validate_string(input_value, strict=strict)
     else:
         assert v.validate_string(input_value, strict=strict) == expected
+
+
+def test_dict():
+    v = SchemaValidator(core_schema.dict_schema(core_schema.int_schema(), core_schema.date_schema()))
+
+    assert v.validate_string({'1': '2017-01-01', '2': '2017-01-02'}) == {1: date(2017, 1, 1), 2: date(2017, 1, 2)}
