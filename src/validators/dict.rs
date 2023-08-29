@@ -123,7 +123,7 @@ impl Validator for DictValidator {
 /// for some lifetime 'a.
 ///
 /// This lifetime `'a` is shorter than the original lifetime `'data` of the input,
-/// which is only a problem in error branches. To resolve we have to call `duplicate`
+/// which is only a problem in error branches. To resolve we have to call `into_owned`
 /// to extend out the lifetime to match the original input.
 pub trait BorrowInput {
     type Input<'a>: Input<'a>
@@ -192,24 +192,24 @@ impl DictValidator {
                         errors.push(
                             err.with_outer_location("[key]".into())
                                 .with_outer_location(key.as_loc_item())
-                                .duplicate(py),
+                                .into_owned(py),
                         );
                     }
                     None
                 }
                 Err(ValError::Omit) => continue,
-                Err(err) => return Err(err.duplicate(py)),
+                Err(err) => return Err(err.into_owned(py)),
             };
             let output_value = match value_validator.validate(py, value, state) {
                 Ok(value) => Some(value),
                 Err(ValError::LineErrors(line_errors)) => {
                     for err in line_errors {
-                        errors.push(err.with_outer_location(key.as_loc_item()).duplicate(py));
+                        errors.push(err.with_outer_location(key.as_loc_item()).into_owned(py));
                     }
                     None
                 }
                 Err(ValError::Omit) => continue,
-                Err(err) => return Err(err.duplicate(py)),
+                Err(err) => return Err(err.into_owned(py)),
             };
             if let (Some(key), Some(value)) = (output_key, output_value) {
                 output.set_item(key, value)?;

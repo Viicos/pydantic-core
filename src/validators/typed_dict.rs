@@ -206,11 +206,11 @@ impl Validator for TypedDictValidator {
                                         errors.push(
                                             lookup_path
                                             .apply_error_loc(err, self.loc_by_alias, &field.name)
-                                            .duplicate(py)
+                                            .into_owned(py)
                                         );
                                     }
                                 }
-                                Err(err) => return ControlFlow::Break(err.duplicate(py)),
+                                Err(err) => return ControlFlow::Break(err.into_owned(py)),
                             }
                             continue;
                         } else if let Some(value) = control_flow!(field.validator.default_value(py, Some(field.name.as_str()), state))? {
@@ -240,14 +240,14 @@ impl Validator for TypedDictValidator {
                                     errors.push(
                                         err.with_outer_location(raw_key.as_loc_item())
                                             .with_type(ErrorTypeDefaults::InvalidKey)
-                                            .duplicate(py)
+                                            .into_owned(py)
                                     );
                                 }
                                 continue;
                             }
-                            Err(err) => return Err(err.duplicate(py)),
+                            Err(err) => return Err(err.into_owned(py)),
                         };
-                        let cow = either_str.as_cow().map_err(|err| err.duplicate(py))?;
+                        let cow = either_str.as_cow().map_err(|err| err.into_owned(py))?;
                         if used_keys.contains(cow.as_ref()) {
                             continue;
                         }
@@ -262,7 +262,7 @@ impl Validator for TypedDictValidator {
                                         value,
                                         raw_key.as_loc_item(),
                                     )
-                                    .duplicate(py)
+                                    .into_owned(py)
                                 );
                             }
                             ExtraBehavior::Ignore => {}
@@ -278,11 +278,11 @@ impl Validator for TypedDictValidator {
                                                 errors.push(
                                                     err
                                                     .with_outer_location(raw_key.as_loc_item())
-                                                    .duplicate(py)
+                                                    .into_owned(py)
                                                 );
                                             }
                                         }
-                                        Err(err) => return Err(err.duplicate(py)),
+                                        Err(err) => return Err(err.into_owned(py)),
                                     }
                                 } else {
                                     output_dict.set_item(py_key, value.to_object(py))?;
